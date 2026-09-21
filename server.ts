@@ -1,6 +1,8 @@
 import express from "express";
+import http from "http";
 import path from "path";
 import dotenv from "dotenv";
+import { WebSocketServer, WebSocket } from "ws";
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 
@@ -25,6 +27,32 @@ function getGenAI(): GoogleGenAI {
     });
   }
   return aiClient;
+}
+
+// Resilient model generator with automatic fallback if a model experiences 503 high demand
+async function generateWithFallback(params: {
+  contents: any;
+  config?: any;
+  preferredModels?: string[];
+}) {
+  const ai = getGenAI();
+  const models = params.preferredModels || ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3.5-flash", "gemini-3.8-flash"];
+  let lastError: any = null;
+
+  for (const model of models) {
+    try {
+      const res = await ai.models.generateContent({
+        model,
+        contents: params.contents,
+        config: params.config,
+      });
+      return res;
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[AI Fallback] Model ${model} failed, attempting next model. Error:`, err?.message || err);
+    }
+  }
+  throw lastError;
 }
 
 async function startServer() {
@@ -151,11 +179,12 @@ const DICT_ZH_TO_TH: Record<string, { th: string; pinyin: string; phonetics: str
 };
 
 function lookupDictionary(text: string, targetLang: string) {
-  const clean = text.trim().replace(/[.,?!，。？！]/g, "");
+  const clean = text.trim().replace(/[.,?!，。？！\s]/g, "").toLowerCase();
   if (targetLang === "zh") {
-    // Look in Thai -> Chinese
+    // Look in Thai -> Chinese (exact word/phrase only)
     for (const [k, v] of Object.entries(DICT_TH_TO_ZH)) {
-      if (clean === k || clean.includes(k) || k.includes(clean)) {
+      const cleanK = k.replace(/[.,?!，。？！\s]/g, "").toLowerCase();
+      if (clean === cleanK) {
         return {
           translatedText: v.zh,
           pinyin: v.pinyin,
@@ -165,9 +194,10 @@ function lookupDictionary(text: string, targetLang: string) {
       }
     }
   } else {
-    // Look in Chinese -> Thai
+    // Look in Chinese -> Thai (exact word/phrase only)
     for (const [k, v] of Object.entries(DICT_ZH_TO_TH)) {
-      if (clean === k || clean.includes(k) || k.includes(clean)) {
+      const cleanK = k.replace(/[.,?!，。？！\s]/g, "").toLowerCase();
+      if (clean === cleanK) {
         return {
           translatedText: v.th,
           pinyin: v.pinyin,
@@ -183,12 +213,26 @@ function lookupDictionary(text: string, targetLang: string) {
   // Fast translation endpoint
   app.post("/api/translate", async (req, res) => {
     try {
-      const { text, sourceLang = "auto", targetLang = "zh" } = req.body;
+      let { text, sourceLang = "auto", targetLang = "zh" } = req.body;
       if (!text || typeof text !== "string" || !text.trim()) {
         return res.status(400).json({ error: "Text is required" });
       }
 
       const cleanInput = text.trim();
+
+      // Automatic language detection by character sets
+      if (sourceLang === "auto" || !sourceLang) {
+        if (/[\u0E00-\u0E7F]/.test(cleanInput)) {
+          sourceLang = "th";
+          targetLang = "zh";
+        } else if (/[\u4E00-\u9FFF]/.test(cleanInput)) {
+          sourceLang = "zh";
+          targetLang = "th";
+        } else {
+          sourceLang = "th";
+          targetLang = "zh";
+        }
+      }
 
       // 1. Check in-memory fast cache (0ms instant response)
       const cached = getCachedTranslation(cleanInput, targetLang);
@@ -202,7 +246,8 @@ function lookupDictionary(text: string, targetLang: string) {
         const payload = {
           originalText: cleanInput,
           translatedText: dictHit.translatedText,
-          detectedLang: dictHit.detectedLang,
+          detectedLang: dictHit.detectedLang || sourceLang,
+          targetLang: targetLang,
           pinyin: dictHit.pinyin,
           phoneticsForReader: dictHit.phoneticsForReader,
         };
@@ -224,15 +269,12 @@ Output JSON matching schema:
 - originalText: input text
 - translatedText: accurate, natural, spoken translation in ${targetLangName}
 - detectedLang: 'th' or 'zh'
+- targetLang: 'zh' or 'th'
 - pinyin: standard Pinyin with tone marks if translation is Chinese, otherwise empty string`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite",
+      const response = await generateWithFallback({
         contents: prompt,
         config: {
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.MINIMAL,
-          },
           temperature: 0.1,
           responseMimeType: "application/json",
           responseSchema: {
@@ -241,6 +283,7 @@ Output JSON matching schema:
               originalText: { type: Type.STRING },
               translatedText: { type: Type.STRING },
               detectedLang: { type: Type.STRING },
+              targetLang: { type: Type.STRING },
               pinyin: { type: Type.STRING },
             },
             required: ["originalText", "translatedText", "detectedLang"],
@@ -250,6 +293,15 @@ Output JSON matching schema:
 
       const responseText = response.text?.trim() || "{}";
       const result = JSON.parse(responseText);
+
+      // Verify character set
+      if (/[\u0E00-\u0E7F]/.test(cleanInput)) {
+        result.detectedLang = "th";
+        result.targetLang = "zh";
+      } else if (/[\u4E00-\u9FFF]/.test(cleanInput)) {
+        result.detectedLang = "zh";
+        result.targetLang = "th";
+      }
 
       // Verify that translatedText is not identical to input
       if (result.translatedText && result.translatedText.trim() === cleanInput) {
@@ -313,23 +365,24 @@ Output JSON matching schema:
         },
       };
 
-      const prompt = `Listen to audio. Speaker speaks Thai or Chinese.
-1. 'originalText': transcribe spoken words in Thai script or Simplified Chinese script. If silence/noise, return empty string "".
-2. 'detectedLang': 'th' or 'zh'.
-3. 'targetLang': opposite language ('zh' or 'th').
-4. 'translatedText': natural conversational translation into opposite language.
-5. 'pinyin': pinyin with tone marks for Chinese.
-6. 'phoneticsForReader': if translated to Chinese, provide Thai phonetic syllables (e.g. 'หนี-ห่าว').
+      const prompt = `You are a real-time live bilingual interpreter between Thai and Chinese.
+Listen to the audio. The speaker is speaking either Thai or Chinese.
+1. 'originalText': transcribe the exact words spoken (in Thai script if Thai, or Simplified Chinese characters if Chinese). If silence or background noise, return "".
+2. 'detectedLang': automatically detect which language was spoken: 'th' or 'zh'.
+3. 'targetLang': translate into the other language ('zh' if spoken Thai, or 'th' if spoken Chinese).
+4. 'translatedText': natural fluent conversational translation into targetLang.
+5. 'pinyin': standard Pinyin with tone marks if translated to Chinese (or empty string if translated to Thai).
+6. 'phoneticsForReader': if translated to Chinese, provide easy Thai phonetic syllables (e.g. 'หนี-ห่าว').
 Output strict JSON.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite",
+      const response = await generateWithFallback({
         contents: {
           parts: [
             audioPart,
             { text: prompt },
           ],
         },
+        preferredModels: ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3.5-flash"],
         config: {
           temperature: 0.0,
           responseMimeType: "application/json",
@@ -360,6 +413,15 @@ Output strict JSON.`;
           translatedText: "",
           detectedLang: "th",
         });
+      }
+
+      // Automatic character set validation to ensure 100% accurate language detection
+      if (/[\u0E00-\u0E7F]/.test(result.originalText)) {
+        result.detectedLang = "th";
+        result.targetLang = "zh";
+      } else if (/[\u4E00-\u9FFF]/.test(result.originalText)) {
+        result.detectedLang = "zh";
+        result.targetLang = "th";
       }
 
       // Check dictionary for phrase refinements
@@ -399,39 +461,48 @@ Output strict JSON.`;
 
       const conversationText = history
         .map((item: any) => {
-          const speaker = item.speaker === "th" || item.detectedLang === "th" ? "คนไทย (ฝ่ายไทย)" : "คนจีน (ฝ่ายจีน)";
+          const speaker = item.speaker === "th" || item.detectedLang === "th" ? "ภาษาไทย" : "ภาษาจีน";
           const original = item.originalText || "";
           const trans = item.translatedText || "";
-          return `${speaker}: "${original}" [แปล: "${trans}"]`;
+          return `${speaker}: "${original}" (คำแปล: "${trans}")`;
         })
         .join("\n");
 
-      const prompt = `คุณคือ AI สรุปบทสนทนาอัจฉริยะ ที่สรุปสาระสำคัญเป็นหัวข้อย่อยชัดเจน อ่านเข้าใจง่ายทันที
-กรุณาวิเคราะห์บทสนทนา 2 ภาษานี้ (ไทย-จีน) แล้วสรุปเนื้อหาเป็นภาษาไทยให้อย่างเป็นระเบียบ เรียบร้อย และกระชับ:
+      const prompt = `คุณคือ AI สรุปบทสนทนาอัจฉริยะ (Executive Conversation Story Summarizer)
+หน้าที่ของคุณคือสรุป "เรื่องราวและสาระสำคัญที่แท้จริง" จากบทสนทนา 2 ภาษานี้ (ไทย-จีน) ให้เป็นภาษาไทยอย่างสละสลวย ชัดเจน และตรงประเด็น
 
-บทสนทนา:
+⚠️ กฎเหล็กที่สำคัญที่สุด (CRITICAL RULES):
+1. "สรุปคือสรุปจริงๆ": ต้องเล่าสรุปเรื่องราว (Story) ว่าคู่สนทนาพูดคุยเรื่องอะไรกัน มีที่มาที่ไปอย่างไร และประเด็นสำคัญคืออะไร ไม่ต้องแบ่งแยกเป็นฝ่ายไทยหรือฝ่ายจีน
+2. "ห้ามคัดลอกหรือยกประโยคคำพูดเดิมมาแสดงเด็ดขาด": ห้ามแสดงข้อความแบบ "ไทย: ...", "จีน: ..." หรือการคัดลอกประโยคพูดทีละประโยคมาแปะเด็ดขาด!
+3. สังเคราะห์เนื้อหาทั้งหมดออกมาเป็นความเข้าใจ สรุปสาระสำคัญเป็นข้อๆ
+
+บทสนทนาที่เกิดขึ้น:
 ${conversationText}
 
-รูปแบบผลลัพธ์ที่ต้องการ (JSON Schema):
-- topicTitle: ตั้งชื่อหัวข้อหลักของบทสนทนานี้ เช่น "เจรจาต่อรองราคาสินค้าและการจัดส่ง", "การสอบถามข้อมูลการเดินทาง", "การสั่งอาหารและเช็คบิล"
-- overview: สรุปภาพรวมสั้นๆ 1-2 บรรทัดว่าทั้งสองฝ่ายคุยอะไรกัน
-- topics: รายการหัวข้อย่อยที่คุยกัน แต่ละหัวข้อมี:
-    - title: ชื่อประเด็น/หัวข้อย่อย เช่น "1. การสอบถามสินค้าและราคา", "2. การต่อรองส่วนลด"
-    - bullets: รายการข้อสรุปย่อยๆ ในประเด็นนั้น (3-5 ข้อสั้นๆ กระชับ ชัดเจน)
-- keyDetails: รายละเอียดสำคัญ เช่น ตัวเลข, ราคา, จำนวน, วันที่, สถานที่ (ถ้ามี หรือเว้นว่างได้)
-- actionItems: สรุปข้อตกลงสุดท้าย หรือสิ่งที่ต้องทำต่อ (เช่น "ฝ่ายจีนจะส่งใบเสนอราคาให้พรุ่งนี้", "ตกลงราคาที่ 50 หยวน")`;
+รูปแบบผลลัพธ์ JSON Schema:
+- topicTitle: ตั้งชื่อหัวข้อที่แท้จริงและกระชับ เช่น "การบอกความรู้สึกและความผูกพัน", "การเจรจาต่อรองราคาสินค้า", "การสอบถามเส้นทางและสถานที่"
+- storyNarration: สรุปเรื่องราวการสนทนาความยาว 2-4 บรรทัด เล่าร้อยเรียงว่าเกิดอะไรขึ้น มีการสื่อสารเรื่องอะไรกัน และมีบรรยากาศอย่างไร
+- overview: สรุปภาพรวมสั้นๆ 1-2 ประโยค
+- keyTakeaway: ประเด็นใจความสำคัญที่สุด (Key Takeaway) เพียง 1 ประโยคที่เด่นชัด
+- topics: รายการหัวข้อย่อยประเด็นสำคัญที่สังเคราะห์แล้ว แต่ละหัวข้อประกอบด้วย:
+    - title: ชื่อประเด็นหลัก เช่น "การเปิดเผยความรู้สึก", "การตอบรับและข้อตกลง"
+    - bullets: สาระสำคัญที่สรุปแล้ว 2-3 ข้อ (สรุปใจความ ไม่ใช่คำพูดเดิม)
+- keyDetails: รายละเอียดสำคัญ เช่น ตัวเลข ราคา จำนวน วันที่ สถานที่ หรือเงื่อนไข (ถ้ามี หรือเป็น array ว่าง [])
+- actionItems: สรุปข้อตกลง บทสรุปสุดท้าย หรือสิ่งที่ต้องทำต่อ`;
 
       const ai = getGenAI();
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite",
+      const response = await generateWithFallback({
         contents: prompt,
+        preferredModels: ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.6-flash"],
         config: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               topicTitle: { type: Type.STRING },
+              storyNarration: { type: Type.STRING },
               overview: { type: Type.STRING },
+              keyTakeaway: { type: Type.STRING },
               topics: {
                 type: Type.ARRAY,
                 items: {
@@ -455,7 +526,7 @@ ${conversationText}
                 items: { type: Type.STRING },
               },
             },
-            required: ["topicTitle", "overview", "topics"],
+            required: ["topicTitle", "storyNarration", "overview", "keyTakeaway", "topics"],
           },
         },
       });
@@ -469,23 +540,83 @@ ${conversationText}
       });
     } catch (err: any) {
       console.error("Summary error:", err);
-      // Fallback structured summary
+      // Fallback structured summary - SYNTHESIZE STORY & TOPICS, NEVER REPEAT RAW "ไทย: ..." or "จีน: ..."
       const historyList = req.body?.history || [];
       const thCount = historyList.filter((h: any) => h.speaker === "th" || h.detectedLang === "th").length;
       const zhCount = historyList.filter((h: any) => h.speaker === "zh" || h.detectedLang === "zh").length;
-      const lastItems = historyList.slice(-4).map((h: any) => `${h.speaker === "th" ? "ไทย" : "จีน"}: ${h.originalText}`);
+
+      // Extract conversational themes from words
+      const combinedText = historyList.map((h: any) => `${h.originalText} ${h.translatedText}`).join(" ").toLowerCase();
+      let title = "การพูดคุยสื่อสาร (ไทย-จีน)";
+      let story = "มีการสื่อสารพูดคุยและแลกเปลี่ยนความเข้าใจซึ่งกันและกันอย่างเป็นกันเอง";
+      let takeaway = "การสื่อสารดำเนินไปด้วยความเข้าใจที่ดีและราบรื่น";
+      const topicsList: { title: string; bullets: string[] }[] = [];
+
+      if (/รัก|ชอบ|คิดถึง|แฟน|ความรู้สึก|爱|喜欢|想你/.test(combinedText)) {
+        title = "การแสดงความรู้สึกและความผูกพัน";
+        story = "บทสนทนานี้เป็นการแสดงความรู้สึกส่วนตัวและความผูกพันที่ดีต่อกัน มีการบอกความรู้สึกและสื่อสารความรู้สึกที่อบอุ่นต่อกันอย่างจริงใจ";
+        takeaway = "มีการเปิดเผยความรู้สึกที่ดีและมีความเข้าใจอันอบอุ่นต่อกัน";
+        topicsList.push({
+          title: "การเปิดเผยความรู้สึกและความสัมพันธ์",
+          bullets: [
+            "มีการสื่อสารบอกความรู้สึกที่จริงใจและสร้างความอบอุ่นใจให้แก่กัน",
+            "คู่สนทนาตอบรับและแสดงความเข้าใจต่อความรู้สึกที่ถ่ายทอดออกมา",
+          ],
+        });
+      } else if (/ราคา|เท่าไหร่|ลด|ซื้อ|บาท|หยวน|โอน|จ่าย|多少|钱|便宜|买|支付/.test(combinedText)) {
+        title = "การสอบถามราคาและการเลือกซื้อสินค้า";
+        story = "คู่สนทนาได้เจรจาพูดคุยเกี่ยวกับข้อมูลสินค้า อัตราค่าบริการ และการตกลงเรื่องค่าใช้จ่าย โดยมีการสอบถามและชี้แจงรายละเอียดอย่างชัดเจน";
+        takeaway = "ได้ข้อสรุปเกี่ยวกับข้อมูลราคาและเงื่อนไขการซื้อขายที่ตรงกัน";
+        topicsList.push({
+          title: "ประเด็นด้านราคาและข้อตกลง",
+          bullets: [
+            "สอบถามรายละเอียดราคาสินค้าและเงื่อนไขส่วนลด",
+            "ทำความเข้าใจตรงกันเรื่องค่าใช้จ่ายและการชำระเงิน",
+          ],
+        });
+      } else if (/กิน|อาหาร|อร่อย|เผ็ด|เมนู|น้ำ|หิวดื่ม|吃|菜|辣|喝|水/.test(combinedText)) {
+        title = "การรับประทานอาหารและความชอบในรสชาติ";
+        story = "เป็นการสนทนาเกี่ยวกับเรื่องอาหารการกิน การสอบถามรสชาติ ความเผ็ด และการเลือกสั่งเครื่องดื่มตามความพึงพอใจของคู่สนทนา";
+        takeaway = "สามารถเลือกและตกลงรายการอาหารที่ตรงตามความต้องการได้อย่างลงตัว";
+        topicsList.push({
+          title: "การเลือกเมนูและการปรับแต่งรสชาติ",
+          bullets: [
+            "แลกเปลี่ยนข้อมูลเรื่องความชอบในรสชาติอาหาร",
+            "การระบุความต้องการเฉพาะสำหรับการสั่งอาหารและเครื่องดื่ม",
+          ],
+        });
+      } else if (/ทาง|ไป|รถ|สนามบิน|โรงแรม|สถานี|ที่ไหน|去|路|车|酒店|机场/.test(combinedText)) {
+        title = "การสอบถามข้อมูลการเดินทางและสถานที่";
+        story = "คู่สนทนามีการสอบถามและชี้แจงเส้นทางการเดินทาง วิธีการเดินทางด้วยยานพาหนะ และจุดหมายปลายทางที่ต้องการไป";
+        takeaway = "ได้ข้อมูลเส้นทางและวิธีเดินทางไปยังจุดหมายอย่างถูกต้องครบถ้วน";
+        topicsList.push({
+          title: "การเดินทางและจุดหมายปลายทาง",
+          bullets: [
+            "สอบถามและระบุจุดหมายปลายทางที่ต้องการเดินทางไป",
+            "ยืนยันความเข้าใจเกี่ยวกับเส้นทางและวิธีเดินทางที่สะดวก",
+          ],
+        });
+      } else {
+        title = "การแลกเปลี่ยนข้อมูลและการสนทนาทั่วไป";
+        story = `การสนทนามีการแลกเปลี่ยนข้อมูลและตอบรับความคิดเห็นระหว่างกันอย่างสุภาพ เพื่อสร้างความเข้าใจที่ตรงกัน`;
+        takeaway = "การพูดคุยบรรลุวัตถุประสงค์ในการสื่อสารและสร้างความเข้าใจร่วมกัน";
+        topicsList.push({
+          title: "สาระสำคัญของการสื่อสาร",
+          bullets: [
+            "มีการแลกเปลี่ยนข้อมูลและความคิดเห็นอย่างต่อเนื่อง",
+            "มีความเข้าใจตรงกันในประเด็นที่ยกขึ้นมาพูดคุย",
+          ],
+        });
+      }
 
       const fallbackData = {
-        topicTitle: "บทสนทนาทั่วไป (ไทย-จีน)",
-        overview: `มีการพูดคุยแลกเปลี่ยนกันทั้งหมด ${historyList.length} ข้อความ (ฝ่ายไทย ${thCount} ครั้ง, ฝ่ายจีน ${zhCount} ครั้ง)`,
-        topics: [
-          {
-            title: "ประเด็นและข้อความล่าสุด",
-            bullets: lastItems.length > 0 ? lastItems : ["เริ่มต้นการสนทนา"],
-          },
-        ],
+        topicTitle: title,
+        storyNarration: story,
+        overview: `บทสนทนามีทั้งหมด ${historyList.length} ข้อความ แปลอัตโนมัติไทย-จีนอย่างต่อเนื่อง`,
+        keyTakeaway: takeaway,
+        topics: topicsList,
         keyDetails: [],
-        actionItems: ["บันทึกการสนทนาเรียบร้อย"],
+        actionItems: ["บันทึกสาระสำคัญของการสนทนาเรียบร้อย"],
       };
 
       return res.json({ success: true, data: fallbackData });
@@ -515,9 +646,7 @@ ${conversationText}
 - detectedLang: "th" หรือ "zh"
 - pinyin: คำอ่านพินอิน (ถ้ามี)`;
 
-      const ai = getGenAI();
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite",
+      const response = await generateWithFallback({
         contents: [
           {
             role: "user",
@@ -532,6 +661,7 @@ ${conversationText}
             ],
           },
         ],
+        preferredModels: ["gemini-flash-latest", "gemini-3.6-flash"],
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -571,7 +701,182 @@ ${conversationText}
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  // Create HTTP server & attach WebSocketServer for Live Video/Audio Call & Subtitles
+  const httpServer = http.createServer(app);
+  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+
+  interface PeerClient {
+    ws: WebSocket;
+    peerId: string;
+    roomId: string;
+    name: string;
+    lang: "th" | "zh";
+    isMuted?: boolean;
+    isVideoOff?: boolean;
+  }
+
+  const callRooms = new Map<string, Map<string, PeerClient>>();
+
+  function broadcastToRoom(roomId: string, message: any, excludePeerId?: string) {
+    const room = callRooms.get(roomId);
+    if (!room) return;
+    const payload = JSON.stringify(message);
+    for (const [peerId, client] of room.entries()) {
+      if (peerId !== excludePeerId && client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(payload);
+      }
+    }
+  }
+
+  wss.on("connection", (ws: WebSocket) => {
+    let currentPeerId = "";
+    let currentRoomId = "";
+
+    ws.on("message", (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        switch (msg.type) {
+          case "join": {
+            const { roomId, peerId, name, lang } = msg;
+            currentPeerId = peerId;
+            currentRoomId = roomId;
+
+            if (!callRooms.has(roomId)) {
+              callRooms.set(roomId, new Map());
+            }
+            const room = callRooms.get(roomId)!;
+
+            const existingPeers = Array.from(room.values()).map((p) => ({
+              peerId: p.peerId,
+              name: p.name,
+              lang: p.lang,
+              isMuted: p.isMuted,
+              isVideoOff: p.isVideoOff,
+            }));
+
+            room.set(peerId, {
+              ws,
+              peerId,
+              roomId,
+              name: name || (lang === "zh" ? "中文用户" : "ผู้ใช้ภาษาไทย"),
+              lang: lang || "th",
+            });
+
+            ws.send(
+              JSON.stringify({
+                type: "room-joined",
+                roomId,
+                peerId,
+                peers: existingPeers,
+              })
+            );
+
+            broadcastToRoom(
+              roomId,
+              {
+                type: "peer-joined",
+                peer: {
+                  peerId,
+                  name: name || (lang === "zh" ? "中文用户" : "ผู้ใช้ภาษาไทย"),
+                  lang: lang || "th",
+                },
+              },
+              peerId
+            );
+            break;
+          }
+
+          case "signal": {
+            const { targetPeerId, data } = msg;
+            const room = callRooms.get(currentRoomId);
+            if (room && targetPeerId) {
+              const target = room.get(targetPeerId);
+              if (target && target.ws.readyState === WebSocket.OPEN) {
+                target.ws.send(
+                  JSON.stringify({
+                    type: "signal",
+                    fromPeerId: currentPeerId,
+                    data,
+                  })
+                );
+              }
+            }
+            break;
+          }
+
+          case "subtitle": {
+            broadcastToRoom(currentRoomId, {
+              type: "subtitle",
+              peerId: currentPeerId,
+              speaker: msg.speaker,
+              senderName: msg.senderName,
+              originalText: msg.originalText,
+              translatedText: msg.translatedText,
+              pinyin: msg.pinyin,
+              timestamp: Date.now(),
+              recordId: msg.recordId || "sub-" + Date.now(),
+            });
+            break;
+          }
+
+          case "chat": {
+            broadcastToRoom(currentRoomId, {
+              type: "chat",
+              id: msg.id || "msg-" + Date.now(),
+              senderId: currentPeerId,
+              senderName: msg.senderName,
+              speaker: msg.speaker,
+              text: msg.text,
+              translatedText: msg.translatedText,
+              pinyin: msg.pinyin,
+              timestamp: Date.now(),
+            });
+            break;
+          }
+
+          case "status-update": {
+            const room = callRooms.get(currentRoomId);
+            if (room && room.has(currentPeerId)) {
+              const p = room.get(currentPeerId)!;
+              p.isMuted = msg.isMuted;
+              p.isVideoOff = msg.isVideoOff;
+              broadcastToRoom(
+                currentRoomId,
+                {
+                  type: "peer-status",
+                  peerId: currentPeerId,
+                  isMuted: msg.isMuted,
+                  isVideoOff: msg.isVideoOff,
+                },
+                currentPeerId
+              );
+            }
+            break;
+          }
+        }
+      } catch (e) {
+        console.error("[WS] Message error:", e);
+      }
+    });
+
+    ws.on("close", () => {
+      if (currentRoomId && currentPeerId) {
+        const room = callRooms.get(currentRoomId);
+        if (room) {
+          room.delete(currentPeerId);
+          broadcastToRoom(currentRoomId, {
+            type: "peer-left",
+            peerId: currentPeerId,
+          });
+          if (room.size === 0) {
+            callRooms.delete(currentRoomId);
+          }
+        }
+      }
+    });
+  });
+
+  httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Thai-Chinese Voice Translator server running on http://localhost:${PORT}`);
   });
 }

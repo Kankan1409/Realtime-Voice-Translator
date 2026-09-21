@@ -18,11 +18,13 @@ export interface SummaryTopic {
 }
 
 export interface ConversationSummary {
-  topicTitle: string; // หัวข้อหลักของแชท เช่น "ต่อรองราคาสินค้าและค่าจัดส่ง"
+  topicTitle: string; // หัวข้อหลักของเรื่อง
   overview: string; // สรุปภาพรวมสั้นๆ
-  topics: SummaryTopic[]; // แต่ละหัวข้อย่อย
-  actionItems?: string[]; // สิ่งที่ตกลงกัน หรือต้องทำต่อ
-  keyDetails?: string[]; // รายละเอียดตัวเลข ราคา วันเวลา
+  storyNarration?: string; // สรุปเรื่องราวการสนทนาแบบบรรยาย ร้อยเรียงว่าเกิดอะไรขึ้น พูดคุยเรื่องอะไรกัน
+  keyTakeaway?: string; // ประเด็นใจความสำคัญที่สุดของการสนทนา
+  topics: SummaryTopic[]; // แต่ละหัวข้อย่อยที่สังเคราะห์แล้ว
+  actionItems?: string[]; // สิ่งที่ตกลงกัน หรือผลลัพธ์
+  keyDetails?: string[]; // รายละเอียดตัวเลข ราคา วันเวลา หรือสาระสำคัญ
 }
 
 export interface ConversationTopic {

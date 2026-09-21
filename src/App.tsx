@@ -8,7 +8,10 @@ import { TextTranslateModal } from './components/TextTranslateModal';
 import { HistorySummaryModal } from './components/HistorySummaryModal';
 import { AISummaryResultModal } from './components/AISummaryResultModal';
 import { OnePageReportModal } from './components/OnePageReportModal';
+import { OnePageVisualCardModal } from './components/OnePageVisualCardModal';
+import { PDFDocumentModal } from './components/PDFDocumentModal';
 import { ShareModal } from './components/ShareModal';
+import { LiveCallModal } from './components/LiveCallModal';
 import { TranslationRecord, Language, ConversationTopic } from './types';
 import {
   SpeechRecognitionSession,
@@ -88,12 +91,55 @@ export default function App() {
   const [isTextOpen, setIsTextOpen] = useState(false);
   const [isHistorySummaryOpen, setIsHistorySummaryOpen] = useState(false);
   const [isOnePageModalOpen, setIsOnePageModalOpen] = useState(false);
+  const [isOnePageVisualOpen, setIsOnePageVisualOpen] = useState(false);
+  const [isPDFDocumentOpen, setIsPDFDocumentOpen] = useState(false);
   const [onePageTopic, setOnePageTopic] = useState<ConversationTopic | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const handleOpenOnePageReport = (topic?: ConversationTopic) => {
+  // Live Video Call (Room-based with Facebook link sharing & live subtitles)
+  const [isLiveCallOpen, setIsLiveCallOpen] = useState(false);
+  const [callRoomId, setCallRoomId] = useState<string | undefined>(undefined);
+
+  // Detect ?room= or ?call= from Facebook Messenger invitation links
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get('room') || params.get('call');
+      if (roomParam) {
+        setCallRoomId(roomParam);
+        setIsLiveCallOpen(true);
+      }
+    } catch (e) {
+      console.warn('Could not parse query params', e);
+    }
+  }, []);
+
+  const handleSaveCallRecords = (newRecords: TranslationRecord[], roomTitle: string) => {
+    if (newRecords.length === 0) return;
+    const newTopic: ConversationTopic = {
+      id: 'topic-call-' + Date.now(),
+      title: roomTitle,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      records: newRecords,
+    };
+    setTopics((prev) => [newTopic, ...prev]);
+    setCurrentTopicId(newTopic.id);
+    showToast(`บันทึกบทสนทนาในสายเรียบร้อย (${newRecords.length} ข้อความ)`);
+  };
+
+  const handleOpenOnePageVisual = (topic?: ConversationTopic) => {
     setOnePageTopic(topic || currentTopic);
-    setIsOnePageModalOpen(true);
+    setIsOnePageVisualOpen(true);
+  };
+
+  const handleOpenPDFDocument = (topic?: ConversationTopic) => {
+    setOnePageTopic(topic || currentTopic);
+    setIsPDFDocumentOpen(true);
+  };
+
+  const handleOpenOnePageReport = (topic?: ConversationTopic) => {
+    handleOpenOnePageVisual(topic);
   };
 
   const speechSessionRef = useRef<SpeechRecognitionSession | null>(null);
@@ -314,6 +360,43 @@ export default function App() {
     }, 1200);
   }, []);
 
+  // Delete a single record from current topic
+  const handleDeleteRecord = useCallback((recordId: string) => {
+    setTopics((prev) =>
+      prev.map((t) => {
+        if (t.id === currentTopicIdRef.current) {
+          return {
+            ...t,
+            records: t.records.filter((r) => r.id !== recordId),
+            updatedAt: Date.now(),
+          };
+        }
+        return t;
+      })
+    );
+    showToast('ลบข้อความเรียบร้อย');
+  }, []);
+
+  // Clear all records in current topic
+  const handleClearCurrentTopic = useCallback(() => {
+    setTopics((prev) =>
+      prev.map((t) => {
+        if (t.id === currentTopicIdRef.current) {
+          return {
+            ...t,
+            records: [],
+            title: 'เรื่องใหม่',
+            overview: undefined,
+            summaryData: undefined,
+            updatedAt: Date.now(),
+          };
+        }
+        return t;
+      })
+    );
+    showToast('ล้างบทสนทนาเรียบร้อย');
+  }, []);
+
   const clientCache = useRef<Map<string, any>>(new Map());
 
   // Perform translation via backend API
@@ -322,8 +405,18 @@ export default function App() {
       const clean = text.trim();
       if (!clean) return;
 
-      const targetLang: Language = sourceLang === 'th' ? 'zh' : 'th';
-      const cacheKey = `${sourceLang}:${targetLang}:${clean.toLowerCase()}`;
+      // Smart automatic language detection by script
+      let actualSource: Language = sourceLang;
+      let actualTarget: Language = sourceLang === 'th' ? 'zh' : 'th';
+      if (/[\u0E00-\u0E7F]/.test(clean)) {
+        actualSource = 'th';
+        actualTarget = 'zh';
+      } else if (/[\u4E00-\u9FFF]/.test(clean)) {
+        actualSource = 'zh';
+        actualTarget = 'th';
+      }
+
+      const cacheKey = `${actualSource}:${actualTarget}:${clean.toLowerCase()}`;
 
       // Instant 0ms response if recently translated
       const cached = clientCache.current.get(cacheKey);
@@ -331,7 +424,7 @@ export default function App() {
         const newRecord: TranslationRecord = {
           id: 'rec-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
           timestamp: Date.now(),
-          speaker: sourceLang,
+          speaker: cached.detectedLang || actualSource,
           originalText: cached.originalText || clean,
           translatedText: cached.translatedText,
           pinyin: cached.pinyin,
@@ -339,7 +432,7 @@ export default function App() {
         };
         addRecordToCurrentTopic(newRecord);
         if (autoSpeak) {
-          speakText(cached.translatedText, targetLang);
+          speakText(cached.translatedText, actualTarget);
         }
         return;
       }
@@ -350,18 +443,23 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             text: clean,
-            sourceLang,
-            targetLang,
+            sourceLang: actualSource,
+            targetLang: actualTarget,
           }),
         });
 
         const data = await response.json();
         if (data.success) {
           clientCache.current.set(cacheKey, data);
+          const detectedSpeaker: Language =
+            data.detectedLang === 'zh' || data.detectedLang === 'th' ? data.detectedLang : actualSource;
+          const finalTargetLang: Language =
+            data.targetLang === 'zh' || data.targetLang === 'th' ? data.targetLang : actualTarget;
+
           const newRecord: TranslationRecord = {
             id: 'rec-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
             timestamp: Date.now(),
-            speaker: sourceLang,
+            speaker: detectedSpeaker,
             originalText: data.originalText || clean,
             translatedText: data.translatedText,
             pinyin: data.pinyin,
@@ -371,7 +469,7 @@ export default function App() {
           addRecordToCurrentTopic(newRecord);
 
           if (autoSpeak) {
-            speakText(data.translatedText, targetLang);
+            speakText(data.translatedText, finalTargetLang);
           }
         }
       } catch (err) {
@@ -607,7 +705,7 @@ export default function App() {
     const ok = await manager.start();
     if (ok) {
       setIsAutoListening(true);
-      showToast('🎙️ เริ่มคุยอัตโนมัติแล้ว สลับฝ่ายพูดให้อัตโนมัติ');
+      showToast('🎙️ เริ่มแปลอัตโนมัติแล้ว ใครพูดภาษาไหนก็แปลให้ทันที');
     } else {
       setIsAutoListening(false);
       setAutoStatus('idle');
@@ -651,6 +749,7 @@ export default function App() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenSummary={() => setIsHistorySummaryOpen(true)}
         onOpenShare={() => setIsShareOpen(true)}
+        onOpenLiveCall={() => setIsLiveCallOpen(true)}
         historyCount={topics.length}
       />
 
@@ -688,6 +787,11 @@ export default function App() {
           onOpenFullSummaryModal={() => setIsAISummaryModalOpen(true)}
           onSwitchAutoSpeaker={handleSwitchAutoSpeaker}
           onOpenOnePageReport={() => handleOpenOnePageReport(currentTopic)}
+          onOpenOnePageVisual={() => handleOpenOnePageVisual(currentTopic)}
+          onOpenPDFReport={() => handleOpenPDFDocument(currentTopic)}
+          onDeleteRecord={handleDeleteRecord}
+          onClearRecords={handleClearCurrentTopic}
+          onOpenLiveCall={() => setIsLiveCallOpen(true)}
         />
       </main>
 
@@ -761,6 +865,8 @@ export default function App() {
         }}
         onDeleteTopic={handleDeleteTopic}
         onOpenOnePageReport={(t) => handleOpenOnePageReport(t)}
+        onOpenOnePageVisual={(t) => handleOpenOnePageVisual(t)}
+        onOpenPDFReport={(t) => handleOpenPDFDocument(t)}
       />
 
       {/* 5. Comprehensive AI Summary Report Modal */}
@@ -777,13 +883,14 @@ export default function App() {
           setIsAISummaryModalOpen(false);
         }}
         isLoading={isSummarizing}
-        onOpenOnePageReport={() => handleOpenOnePageReport(currentTopic)}
+        onOpenOnePageVisual={() => handleOpenOnePageVisual(currentTopic)}
+        onOpenPDFReport={() => handleOpenPDFDocument(currentTopic)}
       />
 
-      {/* 6. One-Page Executive Report & PDF Export Modal */}
-      <OnePageReportModal
-        isOpen={isOnePageModalOpen}
-        onClose={() => setIsOnePageModalOpen(false)}
+      {/* 6. One-Page Infographic Visual Summary Card Modal */}
+      <OnePageVisualCardModal
+        isOpen={isOnePageVisualOpen}
+        onClose={() => setIsOnePageVisualOpen(false)}
         topicTitle={onePageTopic?.title || currentTopic.title}
         summaryData={onePageTopic?.summaryData || currentTopic.summaryData}
         overview={onePageTopic?.overview || currentTopic.overview}
@@ -791,10 +898,37 @@ export default function App() {
         createdAt={onePageTopic?.createdAt || currentTopic.createdAt}
       />
 
-      {/* 7. Quick Share / QR Code Modal */}
+      {/* 7. Official PDF Document Report Modal */}
+      <PDFDocumentModal
+        isOpen={isPDFDocumentOpen}
+        onClose={() => setIsPDFDocumentOpen(false)}
+        topicTitle={onePageTopic?.title || currentTopic.title}
+        summaryData={onePageTopic?.summaryData || currentTopic.summaryData}
+        overview={onePageTopic?.overview || currentTopic.overview}
+        records={onePageTopic?.records || records}
+        createdAt={onePageTopic?.createdAt || currentTopic.createdAt}
+      />
+
+      {/* 8. Quick Share / QR Code Modal */}
       <ShareModal
         isOpen={isShareOpen}
         onClose={() => setIsShareOpen(false)}
+      />
+
+      {/* 9. Live Video Call & Translation Subtitles Modal */}
+      <LiveCallModal
+        isOpen={isLiveCallOpen}
+        onClose={() => {
+          setIsLiveCallOpen(false);
+          setCallRoomId(undefined);
+        }}
+        initialRoomId={callRoomId}
+        onSaveCallRecords={handleSaveCallRecords}
+        onSummarizeAfterCall={() => {
+          setTimeout(() => {
+            handleSummarizeCurrentTopic();
+          }, 300);
+        }}
       />
 
       {/* Toast Notification */}

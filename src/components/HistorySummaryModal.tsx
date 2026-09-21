@@ -8,6 +8,7 @@ import {
   MessageSquare,
   ChevronRight,
   FileText,
+  Sparkles,
 } from 'lucide-react';
 import { ConversationTopic } from '../types';
 import { RobotIcon } from './RobotIcon';
@@ -21,6 +22,8 @@ interface HistorySummaryModalProps {
   onStartNewTopic: () => void;
   onDeleteTopic: (topicId: string) => void;
   onOpenOnePageReport?: (topic: ConversationTopic) => void;
+  onOpenOnePageVisual?: (topic: ConversationTopic) => void;
+  onOpenPDFReport?: (topic: ConversationTopic) => void;
 }
 
 export function HistorySummaryModal({
@@ -32,6 +35,8 @@ export function HistorySummaryModal({
   onStartNewTopic,
   onDeleteTopic,
   onOpenOnePageReport,
+  onOpenOnePageVisual,
+  onOpenPDFReport,
 }: HistorySummaryModalProps) {
   if (!isOpen) return null;
 
@@ -165,19 +170,36 @@ export function HistorySummaryModal({
                     </div>
                   </div>
 
-                  {/* Right Actions: One-Page PDF, Delete & Arrow */}
+                  {/* Right Actions: One-Page Visual, PDF Document, Delete & Arrow */}
                   <div className="flex items-center gap-1 shrink-0">
-                    {onOpenOnePageReport && (
+                    {onOpenOnePageVisual && (
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onOpenOnePageReport(topic);
+                          onOpenOnePageVisual(topic);
                         }}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition"
-                        title="ดูรายงาน One-Page และพิมพ์/บันทึกเป็น PDF"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition"
+                        title="ดูรูปสรุป One-Page (ภาพสรุปสวยงาม บันทึก PNG / แชร์)"
                       >
-                        <FileText className="w-4 h-4" />
+                        <Sparkles className="w-4 h-4 text-indigo-500" />
+                      </button>
+                    )}
+                    {(onOpenPDFReport || onOpenOnePageReport) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onOpenPDFReport) {
+                            onOpenPDFReport(topic);
+                          } else if (onOpenOnePageReport) {
+                            onOpenOnePageReport(topic);
+                          }
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
+                        title="ดูเอกสารรายงาน PDF (ฉบับทางการ ดาวน์โหลด / พิมพ์)"
+                      >
+                        <FileText className="w-4 h-4 text-red-500" />
                       </button>
                     )}
                     <button

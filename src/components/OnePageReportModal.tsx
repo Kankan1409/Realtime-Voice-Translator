@@ -404,11 +404,11 @@ export function OnePageReportModal({
     <div class="signature-box">
       <div class="sig-line">
         <div></div>
-        <span>ลงชื่อผู้สรุป / ตัวแทนฝ่ายไทย</span>
+        <span>ลงชื่อผู้สรุป / ผู้สนทนา</span>
       </div>
       <div class="sig-line">
         <div></div>
-        <span>ลงชื่อคู่สนทนา / ตัวแทนฝ่ายจีน</span>
+        <span>ลงชื่อคู่สนทนา (签字 / Signature)</span>
       </div>
     </div>
 
@@ -702,11 +702,11 @@ export function OnePageReportModal({
             <div className="print-avoid-break pt-4 border-t border-dashed border-slate-300 mt-6 grid grid-cols-2 gap-8 text-center text-xs text-slate-500">
               <div>
                 <div className="h-10 border-b border-slate-400 mb-1.5"></div>
-                <span className="font-medium">ลงชื่อผู้สรุป / ตัวแทนฝ่ายไทย</span>
+                <span className="font-medium">ลงชื่อผู้สรุป / ผู้สนทนา</span>
               </div>
               <div>
                 <div className="h-10 border-b border-slate-400 mb-1.5"></div>
-                <span className="font-medium">ลงชื่อคู่สนทนา / ตัวแทนฝ่ายจีน</span>
+                <span className="font-medium">ลงชื่อคู่สนทนา (签字 / Signature)</span>
               </div>
             </div>
 

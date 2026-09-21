@@ -1,6 +1,6 @@
 {
   "name": "VoiceTrans",
   "description": "Real-time voice translator between Thai and Chinese.",
-  "requestFramePermissions": ["microphone"],
+  "requestFramePermissions": ["microphone", "camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

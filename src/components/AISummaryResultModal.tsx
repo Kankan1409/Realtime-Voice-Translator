@@ -10,11 +10,12 @@ import {
   ListOrdered,
   FileCheck,
   Hash,
-  ArrowRight,
   FileText,
+  Zap,
+  Bookmark,
+  Share2,
 } from 'lucide-react';
 import { ConversationSummary, TranslationRecord } from '../types';
-import { RobotIcon } from './RobotIcon';
 
 interface AISummaryResultModalProps {
   isOpen: boolean;
@@ -25,7 +26,8 @@ interface AISummaryResultModalProps {
   records: TranslationRecord[];
   onStartNewTopic: () => void;
   isLoading?: boolean;
-  onOpenOnePageReport?: () => void;
+  onOpenOnePageVisual?: () => void;
+  onOpenPDFReport?: () => void;
 }
 
 export function AISummaryResultModal({
@@ -37,7 +39,8 @@ export function AISummaryResultModal({
   records,
   onStartNewTopic,
   isLoading = false,
-  onOpenOnePageReport,
+  onOpenOnePageVisual,
+  onOpenPDFReport,
 }: AISummaryResultModalProps) {
   const [copied, setCopied] = useState(false);
 
@@ -46,38 +49,53 @@ export function AISummaryResultModal({
   const thCount = records.filter((r) => r.speaker === 'th').length;
   const zhCount = records.filter((r) => r.speaker === 'zh').length;
 
+  const displayTitle = summaryData?.topicTitle || topicTitle || 'บทสรุปการสนทนา (ไทย ⇄ จีน)';
+  const displayStory =
+    summaryData?.storyNarration ||
+    summaryData?.overview ||
+    overview ||
+    'คู่สนทนาได้สื่อสารพูดคุยและแลกเปลี่ยนความเข้าใจซึ่งกันและกันอย่างราบรื่น';
+  const displayTakeaway =
+    summaryData?.keyTakeaway ||
+    (summaryData?.topics && summaryData.topics[0]?.bullets[0]) ||
+    'การพูดคุยบรรลุวัตถุประสงค์ในการสื่อสารและสร้างความเข้าใจร่วมกัน';
+
   const handleCopyAll = () => {
-    let text = `🤖 บทสรุปการสนทนา (ไทย ⇄ จีน)\n`;
-    text += `📌 เรื่อง: ${summaryData?.topicTitle || topicTitle || 'การสนทนา'}\n`;
-    if (overview || summaryData?.overview) {
-      text += `\n📝 ภาพรวม:\n${summaryData?.overview || overview}\n`;
-    }
+    let text = `🤖 บทสรุปสาระสำคัญการสนทนา (ไทย ⇄ จีน)\n`;
+    text += `📌 เรื่อง: ${displayTitle}\n\n`;
+    text += `💡 ใจความสำคัญที่สุด:\n"${displayTakeaway}"\n\n`;
+    text += `📖 เรื่องราวบทสนทนา:\n${displayStory}\n\n`;
 
     if (summaryData?.topics && summaryData.topics.length > 0) {
-      text += `\n📋 ประเด็นสำคัญที่คุยกัน:\n`;
+      text += `📋 ประเด็นสำคัญที่คุยกัน:\n`;
       summaryData.topics.forEach((t, i) => {
         text += `${i + 1}. ${t.title}\n`;
         t.bullets.forEach((b) => {
-          text += `   • ${b}\n`;
+          // Exclude any raw transcript prefixes if any existed
+          const cleanB = b.replace(/^(ไทย|จีน|ฝ่ายไทย|ฝ่ายจีน):\s*/i, '');
+          text += `   • ${cleanB}\n`;
         });
       });
+      text += `\n`;
     }
 
     if (summaryData?.keyDetails && summaryData.keyDetails.length > 0) {
-      text += `\n🔢 ข้อมูลสำคัญ / ตัวเลข / เงื่อนไข:\n`;
+      text += `🔢 ข้อมูลสำคัญ / ตัวเลข / เงื่อนไข:\n`;
       summaryData.keyDetails.forEach((k) => {
         text += `   • ${k}\n`;
       });
+      text += `\n`;
     }
 
     if (summaryData?.actionItems && summaryData.actionItems.length > 0) {
-      text += `\n✅ ข้อตกลงและสิ่งที่ต้องทำต่อ:\n`;
+      text += `✅ ข้อตกลงและสิ่งที่ต้องทำต่อ:\n`;
       summaryData.actionItems.forEach((a) => {
         text += `   • ${a}\n`;
       });
+      text += `\n`;
     }
 
-    text += `\n(บันทึกการแปลทั้งหมด ${records.length} ข้อความ: ไทย ${thCount} ครั้ง, จีน ${zhCount} ครั้ง)`;
+    text += `(บันทึกการสนทนารวม ${records.length} ข้อความ: ไทย ${thCount} ครั้ง, จีน ${zhCount} ครั้ง)`;
 
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -91,9 +109,10 @@ export function AISummaryResultModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/65 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white border border-slate-200/90 rounded-3xl w-full max-w-lg max-h-[88vh] flex flex-col shadow-2xl overflow-hidden text-slate-800 animate-slideUp">
+      <div className="bg-white border border-slate-200/90 rounded-3xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl overflow-hidden text-slate-800 animate-slideUp">
+        
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-indigo-100 bg-gradient-to-r from-blue-50/80 via-indigo-50/80 to-blue-50/80">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-indigo-100 bg-gradient-to-r from-blue-50/90 via-indigo-50/90 to-blue-50/90">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-xs">
               <Sparkles className="w-4 h-4 text-white" />
@@ -108,7 +127,7 @@ export function AISummaryResultModal({
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium">
-                สรุปเนื้อหาจากการพูดคุยอัตโนมัติ
+                สรุปเรื่องราวและสาระสำคัญที่แท้จริง
               </p>
             </div>
           </div>
@@ -124,17 +143,17 @@ export function AISummaryResultModal({
         </div>
 
         {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 bg-[#f8fafc]">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3.5 bg-[#f8fafc]">
           {isLoading ? (
             <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center animate-spin">
                 <Sparkles className="w-6 h-6" />
               </div>
               <div className="font-bold text-slate-800 text-sm">
-                AI กำลังประมวลผลสรุปเนื้อหาบทสนทนา...
+                AI กำลังสังเคราะห์สรุปเนื้อหาบทสนทนา...
               </div>
               <p className="text-xs text-slate-400 max-w-xs">
-                กำลังรวบรวมประเด็นสำคัญ ตัวเลข และข้อตกลงทั้งภาษาไทยและจีน
+                กำลังรวบรวมเรื่องราว สาระสำคัญ และข้อตกลงโดยไม่ต้องเปิดดูข้อความเดิม
               </p>
             </div>
           ) : (
@@ -143,53 +162,66 @@ export function AISummaryResultModal({
               <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
                 <div className="text-[11px] font-bold text-blue-600 flex items-center gap-1 mb-1">
                   <MessageSquare className="w-3.5 h-3.5" />
-                  <span>หัวข้อเรื่อง</span>
+                  <span>หัวข้อบทสนทนา</span>
                 </div>
-                <h3 className="text-base font-bold text-slate-900 leading-snug">
-                  {summaryData?.topicTitle || topicTitle || 'บทสนทนาทั่วไป (ไทย ⇄ จีน)'}
+                <h3 className="text-base font-extrabold text-slate-900 leading-snug">
+                  {displayTitle}
                 </h3>
                 <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-2">
                   <span>คุยทั้งหมด {records.length} ข้อความ</span>
                   <span>·</span>
                   <span className="text-blue-600 font-medium">🇹🇭 ไทย {thCount} ครั้ง</span>
                   <span>·</span>
-                  <span className="text-amber-600 font-medium">🇨🇳 จีน {zhCount} ครั้ง</span>
+                  <span className="text-red-600 font-medium">🇨🇳 จีน {zhCount} ครั้ง</span>
                 </div>
               </div>
 
-              {/* Overview */}
-              {(summaryData?.overview || overview) && (
-                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
-                  <div className="text-[11px] font-bold text-indigo-600 flex items-center gap-1 mb-1.5">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>ภาพรวมการสนทนา</span>
-                  </div>
-                  <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-medium">
-                    {summaryData?.overview || overview}
-                  </p>
+              {/* Key Takeaway Box */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50/80 border border-amber-200/90 shadow-2xs">
+                <div className="text-[11px] font-bold text-amber-900 flex items-center gap-1.5 mb-1">
+                  <Zap className="w-3.5 h-3.5 text-amber-600 fill-amber-500" />
+                  <span>ใจความสำคัญที่สุด (Key Takeaway)</span>
                 </div>
-              )}
+                <p className="text-xs sm:text-sm font-bold text-slate-900 leading-relaxed">
+                  "{displayTakeaway}"
+                </p>
+              </div>
 
-              {/* Main Topics / Sub-points */}
+              {/* Story Narrative: สรุปเรื่องราวว่าคุยอะไรกัน */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-1.5">
+                <div className="text-[11px] font-bold text-indigo-700 flex items-center gap-1.5">
+                  <Bookmark className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>เรื่องราวบทสนทนา (Conversation Story)</span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-medium">
+                  {displayStory}
+                </p>
+              </div>
+
+              {/* Main Topics (Synthesized, never raw transcript lines) */}
               {summaryData?.topics && summaryData.topics.length > 0 && (
-                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2.5">
                   <div className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
                     <ListOrdered className="w-3.5 h-3.5 text-blue-600" />
-                    <span>ประเด็นสำคัญที่คุยกัน</span>
+                    <span>ประเด็นสำคัญที่พูดคุย (Key Discussion Points)</span>
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {summaryData.topics.map((top, idx) => (
-                      <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <div className="font-bold text-xs text-slate-900 mb-1.5">
+                      <div key={idx} className="bg-slate-50/90 p-3 rounded-xl border border-slate-200/80">
+                        <div className="font-bold text-xs text-slate-900 mb-1">
                           {top.title}
                         </div>
                         <ul className="space-y-1">
-                          {top.bullets.map((b, bIdx) => (
-                            <li key={bIdx} className="text-xs text-slate-600 flex items-start gap-1.5">
-                              <span className="text-blue-500 font-bold shrink-0 leading-tight">•</span>
-                              <span className="leading-relaxed">{b}</span>
-                            </li>
-                          ))}
+                          {top.bullets.map((b, bIdx) => {
+                            // Strip any accidental 'ไทย: ' or 'จีน: ' if present
+                            const cleanText = b.replace(/^(ไทย|จีน|ฝ่ายไทย|ฝ่ายจีน):\s*/i, '');
+                            return (
+                              <li key={bIdx} className="text-xs text-slate-600 flex items-start gap-1.5">
+                                <span className="text-blue-500 font-bold shrink-0 leading-tight">•</span>
+                                <span className="leading-relaxed">{cleanText}</span>
+                              </li>
+                            );
+                          })}
                         </ul>
                       </div>
                     ))}
@@ -220,7 +252,7 @@ export function AISummaryResultModal({
                 <div className="bg-white p-4 rounded-2xl border border-emerald-200/70 shadow-2xs bg-emerald-50/30">
                   <div className="text-[11px] font-bold text-emerald-800 flex items-center gap-1 mb-2">
                     <FileCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>ข้อตกลงและสิ่งที่ต้องทำต่อ</span>
+                    <span>ข้อสรุปและสิ่งที่ต้องทำต่อ</span>
                   </div>
                   <ul className="space-y-1">
                     {summaryData.actionItems.map((a, idx) => (
@@ -236,55 +268,78 @@ export function AISummaryResultModal({
           )}
         </div>
 
-        {/* Bottom Actions */}
+        {/* Bottom Actions - Separate One-Page & PDF cleanly */}
         <div className="p-3 sm:p-4 bg-white border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+          {/* Left Buttons: Copy, One-Page Visual, PDF Report */}
+          <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
               onClick={handleCopyAll}
               disabled={isLoading}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition active:scale-95 shadow-2xs"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition active:scale-95 shadow-2xs"
+              title="คัดลอกข้อความสรุปทั้งหมด"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? 'คัดลอกแล้ว!' : 'คัดลอก'}</span>
+              <span>{copied ? 'คัดลอกแล้ว' : 'คัดลอก'}</span>
             </button>
 
-            {onOpenOnePageReport && (
+            {/* SEPARATE ONE-PAGE VISUAL TEMPLATE BUTTON */}
+            {onOpenOnePageVisual && (
               <button
                 type="button"
                 onClick={() => {
                   onClose();
-                  onOpenOnePageReport();
+                  onOpenOnePageVisual();
                 }}
                 disabled={isLoading}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold transition active:scale-95 shadow-xs"
-                title="เปิดรายงานแบบ One-Page และพิมพ์/บันทึกเป็น PDF"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold transition active:scale-95 shadow-xs"
+                title="เปิดรูปสรุป One-Page ดีไซน์สวยงาม บันทึกภาพ PNG หรือแชร์ได้ทันที"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>รูปสรุป One-Page</span>
+              </button>
+            )}
+
+            {/* SEPARATE PDF DOCUMENT REPORT BUTTON */}
+            {onOpenPDFReport && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenPDFReport();
+                }}
+                disabled={isLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition active:scale-95 shadow-xs"
+                title="เปิดเอกสารรายงาน PDF ฉบับทางการ พร้อมดาวน์โหลดหรือพิมพ์"
               >
                 <FileText className="w-3.5 h-3.5" />
-                <span>One-Page & PDF</span>
+                <span>เอกสาร PDF</span>
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Right Buttons: Start New & Done */}
+          <div className="flex items-center gap-1.5 ml-auto">
             <button
               type="button"
               onClick={handleStartFresh}
-              className="flex items-center gap-1 px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition active:scale-95 border border-blue-100"
+              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition active:scale-95 border border-blue-100"
             >
               <PlusCircle className="w-3.5 h-3.5" />
-              <span>เริ่มคุยเรื่องใหม่</span>
+              <span className="hidden sm:inline">เริ่มคุยเรื่องใหม่</span>
+              <span className="sm:hidden">เรื่องใหม่</span>
             </button>
 
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-[#0066f5] hover:bg-blue-700 text-white text-xs font-bold transition active:scale-95 shadow-xs"
+              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition active:scale-95"
             >
-              เรียบร้อย
+              ปิด
             </button>
           </div>
         </div>
+
       </div>
     </div>
   );

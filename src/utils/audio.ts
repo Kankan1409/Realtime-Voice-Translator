@@ -470,8 +470,8 @@ export class ContinuousAutoInterpreter {
 
       this.callbacks.onVolumeChange(normalizedVolume);
 
-      // Sensitive Voice Activity Detection threshold for normal & soft speech
-      const VOICE_THRESHOLD = 7;
+      // Balanced Voice Activity Detection threshold (avoids faint ambient noise/breathing)
+      const VOICE_THRESHOLD = 9;
 
       // Only evaluate if not currently muted for TTS
       if (!this.isMutedForTTS) {
@@ -487,13 +487,16 @@ export class ContinuousAutoInterpreter {
             this.speechStartTime = Date.now();
             this.callbacks.onStatusChange('speaking');
             this.startRecordingChunk();
+          } else if (Date.now() - this.speechStartTime > 5000) {
+            // Spoken for 5s continuously -> finish chunk so it translates without waiting
+            this.finishRecordingChunk();
           }
         } else if (this.isSpeaking) {
-          // Volume dropped below threshold -> start fast silence countdown
+          // Volume dropped below threshold -> start silence countdown
           if (!this.silenceTimer) {
             this.silenceTimer = setTimeout(() => {
               this.finishRecordingChunk();
-            }, 450); // 450ms silence pause indicates speaker finished sentence
+            }, 550); // 550ms silence pause indicates speaker finished sentence
           }
         }
       }
@@ -576,9 +579,9 @@ export class ContinuousAutoInterpreter {
           reader.readAsDataURL(audioBlob);
         });
 
-        // Fast fetch with 7-second timeout
+        // Fast fetch with 12-second timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 7000);
+        const timeoutId = setTimeout(() => controller.abort(), 12000);
 
         const response = await fetch('/api/transcribe-translate', {
           method: 'POST',
@@ -683,31 +686,22 @@ export interface ContinuousConversationCallbacks {
 
 /**
  * ContinuousConversationManager
- * High-performance, real-time two-way voice conversation engine.
- * Automatically alternates between Thai and Chinese speakers, shows live words as spoken,
- * instantly translates with dictionary & AI, and never dies after one sentence.
+ * Unified automatic live bilingual conversation engine.
+ * Automatically listens, detects spoken language (Thai or Chinese) without manual switching,
+ * translates to the opposite language, and seamlessly speaks the result.
  */
 export class ContinuousConversationManager {
-  private currentSpeaker: 'th' | 'zh' = 'th';
   private isRunning = false;
   private isPausedForTTS = false;
-  private speechSession: SpeechRecognitionSession | null = null;
-  private restartTimer: any = null;
-  private fallbackInterpreter: ContinuousAutoInterpreter | null = null;
-  private audioContext: AudioContext | null = null;
-  private analyser: AnalyserNode | null = null;
-  private volumeStream: MediaStream | null = null;
-  private animFrameId: number | null = null;
+  private interpreter: ContinuousAutoInterpreter | null = null;
   private callbacks: ContinuousConversationCallbacks;
-  private consecutiveSpeechErrors = 0;
 
-  constructor(callbacks: ContinuousConversationCallbacks, initialSpeaker: 'th' | 'zh' = 'th') {
+  constructor(callbacks: ContinuousConversationCallbacks, _initialSpeaker: 'th' | 'zh' = 'th') {
     this.callbacks = callbacks;
-    this.currentSpeaker = initialSpeaker;
   }
 
   public getSpeaker(): 'th' | 'zh' {
-    return this.currentSpeaker;
+    return 'th';
   }
 
   public getIsRunning(): boolean {
@@ -718,29 +712,8 @@ export class ContinuousConversationManager {
     this.stop();
     this.isRunning = true;
     this.isPausedForTTS = false;
-    this.consecutiveSpeechErrors = 0;
 
-    // Check if Web Speech API is supported
-    if (!isSpeechRecognitionSupported()) {
-      console.info('Web Speech API not available, launching ContinuousAutoInterpreter');
-      return await this.switchToFallbackInterpreter();
-    }
-
-    // Start recognition loop directly (do NOT open separate volume getUserMedia which locks mic on iOS)
-    this.startListeningTurn();
-    return true;
-  }
-
-  private async switchToFallbackInterpreter(): Promise<boolean> {
-    if (this.speechSession) {
-      this.speechSession.stop();
-      this.speechSession = null;
-    }
-    if (this.fallbackInterpreter) {
-      this.fallbackInterpreter.stop();
-    }
-
-    this.fallbackInterpreter = new ContinuousAutoInterpreter({
+    this.interpreter = new ContinuousAutoInterpreter({
       onStatusChange: (status) => this.callbacks.onStatusChange(status),
       onVolumeChange: (vol) => this.callbacks.onVolumeChange(vol),
       onTranslation: (data) => {
@@ -748,207 +721,54 @@ export class ContinuousConversationManager {
         this.callbacks.onTranslation(data);
       },
       onError: (err) => {
-        console.warn('Fallback interpreter error:', err);
+        console.warn('Auto interpreter error:', err);
         this.callbacks.onError(err);
       },
     });
 
-    const ok = await this.fallbackInterpreter.start();
+    const ok = await this.interpreter.start();
+    if (!ok) {
+      this.isRunning = false;
+    }
     return ok;
-  }
-
-  private startListeningTurn() {
-    if (!this.isRunning || this.isPausedForTTS) return;
-
-    if (this.restartTimer) {
-      clearTimeout(this.restartTimer);
-      this.restartTimer = null;
-    }
-
-    this.callbacks.onSpeakerChange(this.currentSpeaker);
-    this.callbacks.onStatusChange('listening');
-    this.callbacks.onInterimText('');
-
-    if (!this.speechSession) {
-      this.speechSession = new SpeechRecognitionSession();
-    }
-
-    this.speechSession.start(
-      this.currentSpeaker,
-      async (text: string, isFinal: boolean) => {
-        if (!this.isRunning) return;
-
-        if (!isFinal) {
-          this.consecutiveSpeechErrors = 0;
-          this.callbacks.onStatusChange('speaking');
-          this.callbacks.onVolumeChange(55 + Math.round(Math.random() * 30));
-          this.callbacks.onInterimText(text);
-          return;
-        }
-
-        const clean = text.trim();
-        if (!clean) {
-          // Empty pause -> loop back into listening immediately
-          if (this.isRunning && !this.isPausedForTTS) {
-            this.callbacks.onVolumeChange(0);
-            this.scheduleRestart(100);
-          }
-          return;
-        }
-
-        this.consecutiveSpeechErrors = 0;
-        this.callbacks.onStatusChange('processing');
-        this.callbacks.onVolumeChange(0);
-        this.callbacks.onInterimText(clean);
-
-        const sourceLang = this.currentSpeaker;
-        const targetLang: 'th' | 'zh' = sourceLang === 'th' ? 'zh' : 'th';
-
-        try {
-          const res = await fetch('/api/translate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text: clean,
-              sourceLang,
-              targetLang,
-            }),
-          });
-          const data = await res.json();
-          if (data.success && this.isRunning) {
-            this.callbacks.onTranslation({
-              originalText: clean,
-              translatedText: data.translatedText,
-              detectedLang: sourceLang,
-              targetLang,
-              pinyin: data.pinyin,
-              phoneticsForReader: data.phoneticsForReader,
-            });
-          }
-        } catch (err) {
-          console.error('Continuous translation network error:', err);
-        }
-      },
-      (error) => {
-        this.consecutiveSpeechErrors++;
-        console.warn('SpeechRecognition error encountered:', error, 'count:', this.consecutiveSpeechErrors);
-        // If repeated errors on this device (common on iOS/Safari), switch smoothly to fallback interpreter
-        if (this.consecutiveSpeechErrors >= 2) {
-          console.info('Switching to MediaRecorder ContinuousAutoInterpreter fallback');
-          this.switchToFallbackInterpreter();
-          return;
-        }
-        if (this.isRunning && !this.isPausedForTTS) {
-          this.scheduleRestart(250);
-        }
-      },
-      () => {
-        // Recognition completed/paused -> continue listening if not paused for TTS
-        if (this.isRunning && !this.isPausedForTTS) {
-          this.scheduleRestart(150);
-        }
-      }
-    );
-  }
-
-  private scheduleRestart(delayMs = 200) {
-    if (this.restartTimer) {
-      clearTimeout(this.restartTimer);
-    }
-    this.restartTimer = setTimeout(() => {
-      this.restartTimer = null;
-      if (this.isRunning && !this.isPausedForTTS) {
-        this.startListeningTurn();
-      }
-    }, delayMs);
   }
 
   /**
    * Called when TTS begins speaking translation
-   * Pauses recognition so microphone does not hear the phone speaker
+   * Pauses microphone so it does not capture the device's own speaker
    */
   public onTTSSpeakStart() {
     this.isPausedForTTS = true;
-    if (this.restartTimer) {
-      clearTimeout(this.restartTimer);
-      this.restartTimer = null;
-    }
-    if (this.speechSession) {
-      this.speechSession.stop();
-    }
-    if (this.fallbackInterpreter) {
-      this.fallbackInterpreter.setMutedForTTS(true);
+    if (this.interpreter) {
+      this.interpreter.setMutedForTTS(true, 4500);
     }
   }
 
   /**
    * Called when TTS finishes speaking translation
-   * Automatically flips to the other speaker (Thai ⇄ Chinese) and resumes listening immediately
+   * Resumes listening immediately for whichever party speaks next (Thai or Chinese)
    */
   public onTTSSpeakEnd() {
     this.isPausedForTTS = false;
-    // Auto turn-taking: Thai finished -> now Chinese partner's turn; Chinese finished -> Thai turn!
-    this.currentSpeaker = this.currentSpeaker === 'th' ? 'zh' : 'th';
-    this.callbacks.onSpeakerChange(this.currentSpeaker);
-
-    if (this.fallbackInterpreter) {
-      this.fallbackInterpreter.setMutedForTTS(false);
-    } else if (this.isRunning) {
-      this.scheduleRestart(180);
+    if (this.interpreter) {
+      this.interpreter.setMutedForTTS(false);
     }
   }
 
   /**
-   * Instant speaker switch by user tap (e.g. Thai speaker wants to speak multiple sentences)
+   * Switch speaker stub kept for UI compatibility
    */
   public switchSpeaker(lang: 'th' | 'zh') {
-    this.currentSpeaker = lang;
     this.callbacks.onSpeakerChange(lang);
-    if (this.fallbackInterpreter) {
-      return;
-    }
-    if (this.isRunning && !this.isPausedForTTS) {
-      if (this.speechSession) {
-        this.speechSession.stop();
-      }
-      this.scheduleRestart(80);
-    }
   }
 
   public stop() {
     this.isRunning = false;
     this.isPausedForTTS = false;
 
-    if (this.restartTimer) {
-      clearTimeout(this.restartTimer);
-      this.restartTimer = null;
-    }
-
-    if (this.speechSession) {
-      this.speechSession.stop();
-      this.speechSession = null;
-    }
-
-    if (this.fallbackInterpreter) {
-      this.fallbackInterpreter.stop();
-      this.fallbackInterpreter = null;
-    }
-
-    if (this.animFrameId) {
-      cancelAnimationFrame(this.animFrameId);
-      this.animFrameId = null;
-    }
-
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      try {
-        this.audioContext.close();
-      } catch {}
-      this.audioContext = null;
-    }
-
-    if (this.volumeStream) {
-      this.volumeStream.getTracks().forEach((t) => t.stop());
-      this.volumeStream = null;
+    if (this.interpreter) {
+      this.interpreter.stop();
+      this.interpreter = null;
     }
 
     this.callbacks.onStatusChange('idle');

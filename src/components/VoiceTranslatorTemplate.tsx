@@ -14,6 +14,8 @@ import {
   Square,
   ChevronRight,
   Headphones,
+  Trash2,
+  Video,
 } from 'lucide-react';
 import { TranslationRecord, Language, ConversationSummary } from '../types';
 import { RobotIcon } from './RobotIcon';
@@ -45,6 +47,11 @@ interface VoiceTranslatorTemplateProps {
   onOpenFullSummaryModal?: () => void;
   onSwitchAutoSpeaker?: (lang: Language) => void;
   onOpenOnePageReport?: () => void;
+  onOpenOnePageVisual?: () => void;
+  onOpenPDFReport?: () => void;
+  onDeleteRecord?: (recordId: string) => void;
+  onClearRecords?: () => void;
+  onOpenLiveCall?: () => void;
 }
 
 export function VoiceTranslatorTemplate({
@@ -72,6 +79,11 @@ export function VoiceTranslatorTemplate({
   onOpenFullSummaryModal,
   onSwitchAutoSpeaker,
   onOpenOnePageReport,
+  onOpenOnePageVisual,
+  onOpenPDFReport,
+  onDeleteRecord,
+  onClearRecords,
+  onOpenLiveCall,
 }: VoiceTranslatorTemplateProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -173,68 +185,128 @@ export function VoiceTranslatorTemplate({
             <PlusCircle className="w-3.5 h-3.5" />
             <span>+ คุยเรื่องใหม่</span>
           </button>
+
+          {/* ปุ่ม ล้างข้อความ เมื่อมีข้อความ */}
+          {records.length > 0 && onClearRecords && (
+            <button
+              type="button"
+              onClick={onClearRecords}
+              className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition active:scale-95"
+              title="ล้างข้อความในหัวข้อนี้"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
+      {/* Quick Live Video Call Banner for Facebook Messenger sharing */}
+      {onOpenLiveCall && (
+        <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-blue-500/10 border-b border-emerald-100/80 px-3.5 sm:px-4 py-1.5 max-w-2xl w-full mx-auto flex items-center justify-between text-xs shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-slate-700 font-semibold text-[11px] sm:text-xs truncate">
+              ต้องการคอลวิดีโอ? ส่งลิงก์เข้า Facebook โทรคุยพร้อมซับไตเติลสด
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenLiveCall}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-xs active:scale-95 transition shrink-0 ml-2"
+          >
+            <Video className="w-3.5 h-3.5" />
+            <span>สร้างลิงก์คอล</span>
+          </button>
+        </div>
+      )}
+
       {/* AI Summary Card (เมื่อมีข้อความสรุป แสดงการ์ดย่อตรงนี้ แตะเพื่อเปิดดูเต็ม) */}
       {showSummaryCard && summaryOverview && (
-        <div className="bg-gradient-to-r from-blue-50/95 via-indigo-50/95 to-blue-50/95 border-b border-indigo-100 px-4 py-2.5 max-w-2xl w-full mx-auto animate-fadeIn shrink-0 shadow-xs">
-          <div className="flex items-start justify-between gap-2">
+        <div className="bg-gradient-to-r from-blue-50/95 via-indigo-50/95 to-blue-50/95 border-b border-indigo-100/90 px-3.5 sm:px-4 py-2.5 max-w-2xl w-full mx-auto animate-fadeIn shrink-0 shadow-xs">
+          {/* Top Bar: Title, Topic Pill, and Quick Actions (Copy & Close) */}
+          <div className="flex items-center justify-between gap-2 mb-1.5">
             <div
               onClick={onOpenFullSummaryModal}
-              className="flex items-start gap-2 flex-1 min-w-0 cursor-pointer group"
+              className="flex items-center gap-2 min-w-0 cursor-pointer group flex-1"
             >
-              <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-2xs group-hover:scale-105 transition">
-                <Sparkles className="w-3.5 h-3.5" />
+              <div className="w-5 h-5 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition">
+                <Sparkles className="w-3 h-3 text-amber-200" />
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs font-bold text-slate-900 group-hover:text-indigo-600 transition">
-                    AI สรุปบทสนทนา:
-                  </span>
-                  <span className="text-[10px] text-blue-700 font-semibold bg-white/80 px-2 py-0.5 rounded-full border border-blue-100">
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                <span className="text-xs font-bold text-slate-900 group-hover:text-indigo-600 transition">
+                  AI สรุปบทสนทนา
+                </span>
+                {topicTitle && (
+                  <span className="text-[10px] text-blue-700 font-semibold bg-white/90 px-2 py-0.5 rounded-full border border-blue-100 truncate max-w-[150px] sm:max-w-[200px]">
                     {topicTitle}
                   </span>
-                </div>
-                <p className="text-xs text-slate-700 mt-1 leading-relaxed font-medium line-clamp-2">
-                  {summaryOverview}
-                </p>
-                <div className="text-[11px] text-indigo-600 font-semibold mt-1 flex items-center gap-0.5">
-                  <span>แตะเพื่อดูรายงานสรุปแบบละเอียด</span>
-                  <ChevronRight className="w-3 h-3" />
-                </div>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-1 shrink-0 ml-1">
-              {onOpenOnePageReport && (
-                <button
-                  type="button"
-                  onClick={onOpenOnePageReport}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold shadow-2xs transition"
-                  title="ดู One-Page และพิมพ์/บันทึก PDF"
-                >
-                  <FileText className="w-3 h-3" />
-                  <span>One-Page / PDF</span>
-                </button>
-              )}
+            <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
                 onClick={handleCopySummary}
-                className="p-1.5 rounded-lg text-blue-600 hover:bg-white/80 transition"
+                className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-slate-600 hover:text-blue-600 hover:bg-white/80 transition text-[11px] font-medium"
                 title="คัดลอกข้อความสรุป"
               >
                 {copiedSummary ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{copiedSummary ? 'คัดลอกแล้ว' : 'คัดลอก'}</span>
               </button>
               <button
                 type="button"
                 onClick={() => setShowSummaryCard(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white/80 transition"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white/80 transition"
                 title="ปิดกล่องสรุป"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
+          </div>
+
+          {/* Body: Full-width Summary text with click-to-expand */}
+          <div
+            onClick={onOpenFullSummaryModal}
+            className="cursor-pointer group bg-white/60 hover:bg-white/80 border border-indigo-100/60 rounded-xl p-2.5 transition"
+          >
+            <p className="text-xs text-slate-700 leading-relaxed font-medium line-clamp-2">
+              {summaryOverview}
+            </p>
+            <div className="text-[11px] text-indigo-600 font-semibold mt-1 flex items-center gap-0.5">
+              <span>แตะเพื่อดูรายงานสรุปแบบละเอียด</span>
+              <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+            </div>
+          </div>
+
+          {/* Bottom Action Buttons: Full width 2-button layout */}
+          <div className="flex items-center gap-2 mt-2">
+            {onOpenOnePageVisual && (
+              <button
+                type="button"
+                onClick={onOpenOnePageVisual}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold shadow-2xs transition active:scale-98"
+                title="เปิดรูปสรุป One-Page ดีไซน์สวยงาม บันทึกภาพ PNG หรือแชร์"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span className="truncate">รูปสรุป One-Page</span>
+              </button>
+            )}
+
+            {(onOpenPDFReport || onOpenOnePageReport) && (
+              <button
+                type="button"
+                onClick={onOpenPDFReport || onOpenOnePageReport}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-2xs transition active:scale-98"
+                title="เปิดเอกสารรายงาน PDF ฉบับทางการ พร้อมดาวน์โหลดหรือพิมพ์"
+              >
+                <FileText className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">เอกสาร PDF</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -251,10 +323,10 @@ export function VoiceTranslatorTemplate({
             </div>
             <div>
               <div className="font-bold text-slate-800 text-base sm:text-lg">
-                ล่ามแปลเสียงสด ไทย ⇄ จีน
+                ล่ามแปลเสียงสดอัตโนมัติ ไทย ⇄ จีน
               </div>
               <p className="text-xs sm:text-sm text-slate-500 max-w-xs mt-1.5 leading-relaxed">
-                กดปุ่ม <span className="font-bold text-blue-600">"เริ่มคุยอัตโนมัติ"</span> ด้านล่าง แล้ววางโทรศัพท์ไว้ตรงกลาง คนไทยพูดก็แปล คนจีนพูดก็แปลทันที ไม่ต้องกดสลับ!
+                กดปุ่ม <span className="font-bold text-blue-600">"เริ่มแปลสนทนาอัตโนมัติ"</span> ด้านล่าง แล้ววางโทรศัพท์ไว้ตรงกลาง ใครพูดภาษาไทยก็แปลเป็นจีน ใครพูดภาษาจีนก็แปลเป็นไทยทันที ใครพูดก็แปลให้อัตโนมัติ ไม่ต้องแบ่งฝ่าย!
               </p>
             </div>
 
@@ -269,7 +341,7 @@ export function VoiceTranslatorTemplate({
               </div>
               <div className="flex items-start gap-2">
                 <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">2</span>
-                <span>พูดคุยได้อย่างเป็นธรรมชาติ ระบบตรวจจับและแปลให้อัตโนมัติ</span>
+                <span>ใครพูดภาษาไทยหรือจีนก็ได้ ระบบจะแปลให้อัตโนมัติทันที</span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">3</span>
@@ -284,15 +356,13 @@ export function VoiceTranslatorTemplate({
 
           return (
             <div key={rec.id} className="animate-fadeIn">
-              {/* Vibrant Translation Card */}
-              <div className={`rounded-2xl p-4 shadow-md text-white transition ${
-                isThaiSpeaker ? 'bg-[#0066f5]' : 'bg-[#0f172a]'
-              }`}>
+              {/* Unified Translation Card - Clean & Consistent for all speech */}
+              <div className="rounded-2xl p-4 shadow-sm border border-slate-700/60 bg-[#0f172a] text-white transition">
                 <div className="flex items-center justify-between mb-2 opacity-90">
                   <div className="flex items-center gap-2">
-                    <span className="text-base">{isThaiSpeaker ? '🇹🇭 ➔ 🇨🇳' : '🇨🇳 ➔ 🇹🇭'}</span>
-                    <span className="text-xs font-bold text-blue-100 tracking-wider">
-                      {isThaiSpeaker ? 'คำแปลภาษาจีน (Chinese)' : 'คำแปลภาษาไทย (Thai)'}
+                    <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-white/10 text-blue-200 flex items-center gap-1.5">
+                      <span>{isThaiSpeaker ? '🇹🇭 ➔ 🇨🇳' : '🇨🇳 ➔ 🇹🇭'}</span>
+                      <span>{isThaiSpeaker ? 'คำแปลภาษาจีน' : 'คำแปลภาษาไทย'}</span>
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -316,6 +386,16 @@ export function VoiceTranslatorTemplate({
                         <Copy className="w-4 h-4 text-white" />
                       )}
                     </button>
+                    {onDeleteRecord && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteRecord(rec.id)}
+                        className="p-1.5 rounded-lg bg-white/10 hover:bg-rose-500/40 hover:text-rose-200 active:scale-95 transition text-slate-300"
+                        title="ลบข้อความนี้"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -326,7 +406,7 @@ export function VoiceTranslatorTemplate({
 
                 {/* Pinyin (shown for Chinese text) */}
                 {showPinyin && rec.pinyin && (
-                  <div className="mt-2 pt-2 border-t border-white/20 text-xs sm:text-sm font-medium tracking-wide text-blue-100 font-mono flex items-center gap-2">
+                  <div className="mt-2 pt-2 border-t border-white/15 text-xs sm:text-sm font-medium tracking-wide text-blue-200 font-mono flex items-center gap-2">
                     <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/15 text-white font-sans font-bold">พินอิน</span>
                     <span>{rec.pinyin}</span>
                   </div>
@@ -340,9 +420,9 @@ export function VoiceTranslatorTemplate({
                 )}
 
                 {/* Original Spoken Text */}
-                <div className="mt-3 pt-2 border-t border-white/20 flex items-center justify-between text-xs text-blue-100/90">
+                <div className="mt-3 pt-2 border-t border-white/15 flex items-center justify-between text-xs text-slate-300">
                   <span className="truncate max-w-[240px] sm:max-w-md">
-                    เสียงต้นฉบับ: "{rec.originalText}"
+                    เสียงที่พูด: "{rec.originalText}"
                   </span>
                   <button
                     type="button"
@@ -378,10 +458,10 @@ export function VoiceTranslatorTemplate({
                 }`} />
                 <span className="text-xs font-bold text-slate-800">
                   {autoStatus === 'speaking'
-                    ? `🗣️ กำลังฟังเสียงฝ่าย${activeSpeaker === 'zh' ? 'จีน 🇨🇳' : 'ไทย 🇹🇭'}...`
+                    ? '🗣️ ได้ยินเสียงพูด... กำลังแปลให้อัตโนมัติ'
                     : autoStatus === 'processing'
-                    ? '⚡ กำลังถอดความและแปลภาษาทันที...'
-                    : `🟢 กำลังเปิดไมค์รอฟังฝ่าย${activeSpeaker === 'zh' ? 'จีน 🇨🇳' : 'ไทย 🇹🇭'} (พูดได้เลย)`}
+                    ? '⚡ แปลภาษาสำเร็จเรียบร้อย...'
+                    : '🟢 เปิดไมค์อยู่ ใครพูดภาษาไหนก็แปลให้ทันที'}
                 </span>
               </div>
               <AudioWaveform isActive={autoStatus === 'speaking' || autoStatus === 'processing' || liveVolume > 5} color="bg-blue-600" barsCount={8} />
@@ -391,7 +471,7 @@ export function VoiceTranslatorTemplate({
             {interimTranscript && (
               <div className="mt-2.5 pt-2 border-t border-blue-200/60 flex items-start gap-2 animate-fadeIn">
                 <span className="text-[11px] font-bold text-blue-700 bg-blue-100/90 px-2 py-0.5 rounded-md shrink-0">
-                  คำที่ได้ยิน:
+                  สถานะ:
                 </span>
                 <span className="text-sm font-semibold text-slate-800 break-words leading-snug">
                   "{interimTranscript}"
@@ -407,7 +487,7 @@ export function VoiceTranslatorTemplate({
             <div className="text-xs font-bold text-blue-600 mb-1 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
               <span>
-                กำลังฟังเสียงภาษา{selectedLanguage === 'th' ? 'ไทย 🇹🇭' : 'จีน 🇨🇳'}...
+                กำลังฟังเสียง... (พูดภาษาไทยหรือจีนก็ได้ ตรวจจับภาษาอัตโนมัติ)
               </span>
             </div>
             <div className="font-medium text-slate-800 text-base">
@@ -420,59 +500,49 @@ export function VoiceTranslatorTemplate({
       {/* Bottom Control Section */}
       <div className="p-3 bg-white/95 backdrop-blur-md border-t border-slate-200/80 shadow-lg shrink-0">
         <div className="max-w-md mx-auto space-y-2">
-          {/* 1. If currently in Auto-Listening Mode: Speaker selector & Stop & Summarize Button */}
+          {/* 1. If currently in Auto-Listening Mode: Auto-detect status & Stop & Summarize Button */}
           {isAutoListening ? (
             <div className="space-y-2">
-              {/* Speaker Selector Pill during Auto-listening */}
-              <div className="bg-slate-100/90 p-1 rounded-2xl border border-slate-200/90 flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => onSwitchAutoSpeaker?.('th')}
-                  className={`flex-1 py-1.5 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                    activeSpeaker === 'th'
-                      ? 'bg-[#0066f5] text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 bg-transparent'
-                  }`}
-                  title="แตะหากฝ่ายไทยต้องการพูดต่อ"
-                >
-                  <span>🇹🇭 ฝ่ายไทยพูด</span>
-                  {activeSpeaker === 'th' && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  )}
-                </button>
-
-                <div className="text-[10px] text-slate-400 font-bold shrink-0">⇄</div>
-
-                <button
-                  type="button"
-                  onClick={() => onSwitchAutoSpeaker?.('zh')}
-                  className={`flex-1 py-1.5 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                    activeSpeaker === 'zh'
-                      ? 'bg-[#0066f5] text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 bg-transparent'
-                  }`}
-                  title="แตะหากฝ่ายจีนต้องการพูดต่อ"
-                >
-                  <span>🇨🇳 ฝ่ายจีนพูด</span>
-                  {activeSpeaker === 'zh' && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  )}
-                </button>
+              {/* Auto-Detection Status Pill (No manual speaker switching!) */}
+              <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-blue-50 p-2.5 rounded-2xl border border-blue-200/90 flex items-center justify-between gap-2 shadow-2xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-blue-950 flex items-center gap-1.5 truncate">
+                      <span>✨ โหมดใครพูดก็แปล (แปลอัตโนมัติ)</span>
+                    </div>
+                    <div className="text-[11px] text-blue-800/80 truncate">
+                      พูดภาษาไทยหรือจีนก็ได้ ระบบจะแปลให้อัตโนมัติทันที
+                    </div>
+                  </div>
+                </div>
+                <div className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  <span>กำลังฟัง</span>
+                </div>
               </div>
 
               {/* Dynamic Live Status Bar */}
               <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                  <span className="font-semibold text-slate-700">
-                    {autoStatus === 'speaking'
-                      ? 'ได้ยินเสียงกำลังพูด...'
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${
+                    autoStatus === 'speaking'
+                      ? 'bg-blue-600 animate-ping'
                       : autoStatus === 'processing'
-                      ? 'กำลังแปลภาษาทันที...'
-                      : `เปิดไมค์อยู่ พูดภาษา${activeSpeaker === 'zh' ? 'จีน' : 'ไทย'}ได้เลย`}
+                      ? 'bg-indigo-600 animate-spin'
+                      : 'bg-emerald-500 animate-pulse'
+                  }`} />
+                  <span className="font-semibold text-slate-700 truncate">
+                    {autoStatus === 'speaking'
+                      ? '🗣️ ได้ยินเสียงพูด... กำลังจับเสียง'
+                      : autoStatus === 'processing'
+                      ? '⚡ กำลังแปลภาษาให้อัตโนมัติ...'
+                      : '🟢 เปิดไมค์อยู่ ใครพูดภาษาไหนก็แปลให้ทันที'}
                   </span>
                 </div>
-                <div className="text-[11px] text-blue-600 font-bold">
+                <div className="text-[11px] text-blue-600 font-bold shrink-0">
                   {records.length} ข้อความ
                 </div>
               </div>
@@ -499,7 +569,7 @@ export function VoiceTranslatorTemplate({
               </button>
             </div>
           ) : (
-            /* 2. When Not Listening: Big HERO "เริ่มคุยอัตโนมัติ" Button */
+            /* 2. When Not Listening: Big HERO "เริ่มแปลสนทนาอัตโนมัติ" Button */
             <div className="space-y-2">
               <button
                 type="button"
@@ -511,79 +581,47 @@ export function VoiceTranslatorTemplate({
                 </div>
                 <div className="text-left flex-1 min-w-0">
                   <div className="text-sm sm:text-base font-bold flex items-center gap-2 leading-tight">
-                    <span>เริ่มคุยอัตโนมัติ (ไทย ⇄ จีน)</span>
+                    <span>เริ่มแปลอัตโนมัติ (ใครพูดก็แปล)</span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-400 text-emerald-950 font-extrabold shrink-0">
-                      ไม่ต้องกดตลอด
+                      ใครพูดก็แปล 🇹🇭 ⇄ 🇨🇳
                     </span>
                   </div>
                   <div className="text-xs text-blue-100 font-normal leading-tight mt-1 truncate">
-                    คนจีนพูดก็แปล คนไทยพูดก็แปลทันที คุยจบกดสรุปได้เลย
+                    แตะครั้งเดียว วางไว้ตรงกลาง ใครพูดภาษาไหนก็แปลให้ทันที ไม่ต้องแบ่งฝ่าย
                   </div>
                 </div>
               </button>
 
               {/* Sub-toggle for manual per-sentence talk if needed */}
-              <div className="pt-1 flex items-center justify-center">
+              <div className="pt-0.5 flex items-center justify-center">
                 <button
                   type="button"
                   onClick={() => setShowManualToggles(!showManualToggles)}
                   className="text-[11px] text-slate-400 hover:text-slate-600 transition flex items-center gap-1 font-medium"
                 >
-                  <span>{showManualToggles ? 'ซ่อนโหมดกดพูดทีละประโยค' : 'หรือต้องการกดพูดทีละประโยค?'}</span>
+                  <span>{showManualToggles ? 'ซ่อนโหมดกดพูดทีละประโยค' : 'หรือต้องการแตะเพื่อพูดทีละประโยค?'}</span>
                   <ChevronRight className={`w-3 h-3 transition-transform ${showManualToggles ? 'rotate-90' : ''}`} />
                 </button>
               </div>
 
-              {/* Collapsible Manual Talk Buttons */}
+              {/* Collapsible Manual Talk - Single Unified Button with Auto Detection */}
               {showManualToggles && (
-                <div className="flex items-center justify-between gap-2 pt-1 animate-fadeIn">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedLanguage('th');
-                      if (isListening && activeSpeaker !== 'th') {
-                        onStopListening();
-                        setTimeout(() => onStartListening('th'), 150);
-                      }
-                    }}
-                    className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs transition border ${
-                      selectedLanguage === 'th'
-                        ? 'bg-blue-50 border-blue-500 text-[#0066f5]'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    🇹🇭 พูดไทย
-                  </button>
-
+                <div className="pt-1 animate-fadeIn">
                   <button
                     type="button"
                     onClick={handleManualMicClick}
-                    className={`w-10 h-10 rounded-full flex items-center justify-center shadow transition active:scale-95 shrink-0 ${
+                    className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 border shadow-2xs active:scale-98 ${
                       isListening
-                        ? 'bg-rose-500 text-white ring-4 ring-rose-300 animate-pulse'
-                        : 'bg-slate-800 text-white hover:bg-slate-900'
-                    }`}
-                    title={isListening ? 'แตะเพื่อหยุด' : 'แตะเพื่อพูดประโยคนี้'}
-                  >
-                    {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedLanguage('zh');
-                      if (isListening && activeSpeaker !== 'zh') {
-                        onStopListening();
-                        setTimeout(() => onStartListening('zh'), 150);
-                      }
-                    }}
-                    className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs transition border ${
-                      selectedLanguage === 'zh'
-                        ? 'bg-blue-50 border-blue-500 text-[#0066f5]'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        ? 'bg-rose-500 border-rose-600 text-white ring-4 ring-rose-200 animate-pulse'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    🇨🇳 พูดจีน
+                    {isListening ? <MicOff className="w-4 h-4 text-white" /> : <Mic className="w-4 h-4 text-blue-600" />}
+                    <span>
+                      {isListening
+                        ? 'กำลังฟังเสียง... แตะเพื่อหยุดและแปลทันที'
+                        : 'แตะเพื่อพูด (พูดไทยหรือจีนก็ได้ ตรวจจับภาษาอัตโนมัติ)'}
+                    </span>
                   </button>
                 </div>
               )}
