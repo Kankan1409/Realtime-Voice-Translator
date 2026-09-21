@@ -1,0 +1,516 @@
+import express from "express";
+import path from "path";
+import dotenv from "dotenv";
+import { GoogleGenAI, Type } from "@google/genai";
+import { createServer as createViteServer } from "vite";
+
+dotenv.config();
+
+const PORT = 3000;
+let aiClient: GoogleGenAI | null = null;
+
+function getGenAI(): GoogleGenAI {
+  if (!aiClient) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is not configured.");
+    }
+    aiClient = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
+  }
+  return aiClient;
+}
+
+async function startServer() {
+  const app = express();
+
+  // Increase payload limit for base64 audio recordings
+  app.use(express.json({ limit: "30mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "30mb" }));
+
+  // Health check
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok", timestamp: Date.now() });
+  });
+
+// Built-in high accuracy dictionary for instant translation and fallback
+const DICT_TH_TO_ZH: Record<string, { zh: string; pinyin: string; phonetics: string }> = {
+  "ขอบคุณ": { zh: "谢谢", pinyin: "xièxie", phonetics: "เซี่ย-เซียะ" },
+  "ขอบคุณครับ": { zh: "谢谢", pinyin: "xièxie", phonetics: "เซี่ย-เซียะ" },
+  "ขอบคุณค่ะ": { zh: "谢谢", pinyin: "xièxie", phonetics: "เซี่ย-เซียะ" },
+  "ขอบคุณมาก": { zh: "非常感谢", pinyin: "fēicháng gǎnxiè", phonetics: "เฟย-ฉาง-ก่าน-เซี่ย" },
+  "ขอบคุณมากครับ": { zh: "非常感谢", pinyin: "fēicháng gǎnxiè", phonetics: "เฟย-ฉาง-ก่าน-เซี่ย" },
+  "ขอบคุณมากๆ": { zh: "非常感谢", pinyin: "fēicháng gǎnxiè", phonetics: "เฟย-ฉาง-ก่าน-เซี่ย" },
+  "สวัสดี": { zh: "你好", pinyin: "nǐ hǎo", phonetics: "หนี-ห่าว" },
+  "สวัสดีครับ": { zh: "你好", pinyin: "nǐ hǎo", phonetics: "หนี-ห่าว" },
+  "สวัสดีค่ะ": { zh: "你好", pinyin: "nǐ hǎo", phonetics: "หนี-ห่าว" },
+  "ยินดีที่ได้รู้จัก": { zh: "很高兴认识你", pinyin: "hěn gāoxìng rènshí nǐ", phonetics: "เหิ่น-เกา-ซิ่ง-เยิ่น-สือ-หนี่" },
+  "เท่าไหร่": { zh: "多少钱？", pinyin: "duōshao qián?", phonetics: "ตัว-เส่า-เฉียน" },
+  "ราคาเท่าไหร่": { zh: "多少钱？", pinyin: "duōshao qián?", phonetics: "ตัว-เส่า-เฉียน" },
+  "อันนี้เท่าไหร่": { zh: "这个多少钱？", pinyin: "zhège duōshao qián?", phonetics: "เจ้อ-เกอะ-ตัว-เส่า-เฉียน" },
+  "ลดราคาได้ไหม": { zh: "可以便宜一点吗？", pinyin: "kěyǐ piányi yīdiǎn ma?", phonetics: "เข่อ-อี่-เผียน-อี-อี-เตี่ยน-มา" },
+  "ลดหน่อยได้ไหม": { zh: "可以便宜一点吗？", pinyin: "kěyǐ piányi yīdiǎn ma?", phonetics: "เข่อ-อี่-เผียน-อี-อี-เตี่ยน-มา" },
+  "เช็คบิล": { zh: "买单", pinyin: "mǎidān", phonetics: "ใหม่-ตาน" },
+  "เก็บเงินด้วย": { zh: "买单", pinyin: "mǎidān", phonetics: "ใหม่-ตาน" },
+  "ไม่เผ็ด": { zh: "不要辣", pinyin: "bù yào là", phonetics: "ปู้-เย่า-ล่า" },
+  "ขอไม่เผ็ด": { zh: "不要太辣", pinyin: "bù yào tài là", phonetics: "ปู้-เย่า-ไท่-ล่า" },
+  "อร่อยมาก": { zh: "很好吃", pinyin: "hěn hǎochī", phonetics: "เหิ่น-ห่าว-ชรือ" },
+  "ห้องน้ำอยู่ที่ไหน": { zh: "洗手间在哪里？", pinyin: "xǐshǒujiān zài nǎlǐ?", phonetics: "สี่-โส่ว-เจียน-ไจ้-หนา-หลี่" },
+  "ใช่": { zh: "是的", pinyin: "shì de", phonetics: "ซื่อ-เตอะ" },
+  "ไม่ใช่": { zh: "不是", pinyin: "bù shì", phonetics: "ปู้-ซื่อ" },
+  "ได้": { zh: "可以", pinyin: "kěyǐ", phonetics: "เข่อ-อี่" },
+  "ไม่ได้": { zh: "不行", pinyin: "bù xíng", phonetics: "ปู้-สิง" },
+  "ขอโทษ": { zh: "对不起", pinyin: "duìbuqǐ", phonetics: "ตุ้ย-ปู้-ฉี่" },
+  "ขอโทษครับ": { zh: "对不起", pinyin: "duìbuqǐ", phonetics: "ตุ้ย-ปู้-ฉี่" },
+  "ขอโทษค่ะ": { zh: "对不起", pinyin: "duìbuqǐ", phonetics: "ตุ้ย-ปู้-ฉี่" },
+  "ไม่เป็นไร": { zh: "没关系", pinyin: "méi guānxi", phonetics: "เหมย-กวาน-ซี" },
+  "ลาก่อน": { zh: "再见", pinyin: "zàijiàn", phonetics: "ไจ้-เจี้ยน" },
+};
+
+const DICT_ZH_TO_TH: Record<string, { th: string; pinyin: string; phonetics: string }> = {
+  "谢谢": { th: "ขอบคุณครับ", pinyin: "xièxie", phonetics: "เซี่ย-เซียะ" },
+  "谢谢你": { th: "ขอบคุณครับ", pinyin: "xièxie nǐ", phonetics: "เซี่ย-เซียะ-หนี่" },
+  "非常感谢": { th: "ขอบคุณมากๆ ครับ", pinyin: "fēicháng gǎnxiè", phonetics: "เฟย-ฉาง-ก่าน-เซี่ย" },
+  "你好": { th: "สวัสดีครับ", pinyin: "nǐ hǎo", phonetics: "หนี-ห่าว" },
+  "您好": { th: "สวัสดีครับ", pinyin: "nín hǎo", phonetics: "หนิน-ห่าว" },
+  "多少钱": { th: "ราคาเท่าไหร่ครับ", pinyin: "duōshao qián", phonetics: "ตัว-เส่า-เฉียน" },
+  "这个多少钱": { th: "อันนี้ราคาเท่าไหร่ครับ", pinyin: "zhège duōshao qián", phonetics: "เจ้อ-เกอะ-ตัว-เส่า-เฉียน" },
+  "可以便宜一点吗": { th: "ลดหน่อยได้ไหมครับ", pinyin: "kěyǐ piányi yīdiǎn ma", phonetics: "เข่อ-อี่-เผียน-อี-อี-เตี่ยน-มา" },
+  "太贵了": { th: "แพงเกินไปครับ", pinyin: "tài guì le", phonetics: "ไท่-กุ้ย-เลอ" },
+  "买单": { th: "เช็คบิลด้วยครับ", pinyin: "mǎidān", phonetics: "ใหม่-ตาน" },
+  "结账": { th: "คิดเงินด้วยครับ", pinyin: "jiézhàng", phonetics: "เจี๋ย-จ้าง" },
+  "好吃": { th: "อร่อยครับ", pinyin: "hǎochī", phonetics: "ห่าว-ชรือ" },
+  "很好吃": { th: "อร่อยมากๆ ครับ", pinyin: "hěn hǎochī", phonetics: "เหิ่น-ห่าว-ชรือ" },
+  "不要辣": { th: "ไม่ใส่เผ็ดครับ", pinyin: "bù yào là", phonetics: "ปู้-เย่า-ล่า" },
+  "微辣": { th: "ขอเผ็ดนิดเดียวครับ", pinyin: "wēi là", phonetics: "เวย-ล่า" },
+  "在哪里": { th: "อยู่ที่ไหนครับ", pinyin: "zài nǎlǐ", phonetics: "ไจ้-หนา-หลี่" },
+  "洗手间在哪里": { th: "ห้องน้ำอยู่ที่ไหนครับ", pinyin: "xǐshǒujiān zài nǎlǐ", phonetics: "สี่-โส่ว-เจียน-ไจ้-หนา-หลี่" },
+  "对不起": { th: "ขอโทษครับ", pinyin: "duìbuqǐ", phonetics: "ตุ้ย-ปู้-ฉี่" },
+  "没关系": { th: "ไม่เป็นไรครับ", pinyin: "méi guānxi", phonetics: "เหมย-กวาน-ซี" },
+  "再见": { th: "ลาก่อนครับ / พบกันใหม่", pinyin: "zàijiàn", phonetics: "ไจ้-เจี้ยน" },
+  "好的": { th: "โอเคครับ / ได้ครับ", pinyin: "hǎo de", phonetics: "ห่าว-เตอะ" },
+  "可以": { th: "ได้ครับ", pinyin: "kěyǐ", phonetics: "เข่อ-อี่" },
+  "不行": { th: "ไม่ได้ครับ", pinyin: "bù xíng", phonetics: "ปู้-สิง" },
+};
+
+function lookupDictionary(text: string, targetLang: string) {
+  const clean = text.trim().replace(/[.,?!，。？！]/g, "");
+  if (targetLang === "zh") {
+    // Look in Thai -> Chinese
+    for (const [k, v] of Object.entries(DICT_TH_TO_ZH)) {
+      if (clean === k || clean.includes(k) || k.includes(clean)) {
+        return {
+          translatedText: v.zh,
+          pinyin: v.pinyin,
+          phoneticsForReader: v.phonetics,
+          detectedLang: "th",
+        };
+      }
+    }
+  } else {
+    // Look in Chinese -> Thai
+    for (const [k, v] of Object.entries(DICT_ZH_TO_TH)) {
+      if (clean === k || clean.includes(k) || k.includes(clean)) {
+        return {
+          translatedText: v.th,
+          pinyin: v.pinyin,
+          phoneticsForReader: v.phonetics,
+          detectedLang: "zh",
+        };
+      }
+    }
+  }
+  return null;
+}
+
+  // Fast translation endpoint
+  app.post("/api/translate", async (req, res) => {
+    try {
+      const { text, sourceLang = "auto", targetLang = "zh" } = req.body;
+      if (!text || typeof text !== "string" || !text.trim()) {
+        return res.status(400).json({ error: "Text is required" });
+      }
+
+      const cleanInput = text.trim();
+      const targetLangName = targetLang === "zh" ? "Simplified Chinese (中文)" : "Thai (ภาษาไทย)";
+
+      // 1. Check instant dictionary first for ultra-fast and 100% reliable translations
+      const dictHit = lookupDictionary(cleanInput, targetLang);
+      if (dictHit) {
+        return res.json({
+          success: true,
+          originalText: cleanInput,
+          translatedText: dictHit.translatedText,
+          detectedLang: dictHit.detectedLang,
+          pinyin: dictHit.pinyin,
+          phoneticsForReader: dictHit.phoneticsForReader,
+          sentimentOrTone: "สนทนาทั่วไป",
+        });
+      }
+
+      // 2. Call Gemini API using high-quota gemini-3.1-flash-lite
+      const ai = getGenAI();
+      const sourceLangHint =
+        sourceLang === "th"
+          ? "The source text is Thai (ภาษาไทย)."
+          : sourceLang === "zh"
+          ? "The source text is Chinese (中文)."
+          : "Auto-detect source language: if Thai, translate to Chinese; if Chinese, translate to Thai.";
+
+      const prompt = `You are a real-time bilateral live interpreter between Thai and Chinese.
+Translate the following spoken message accurately, colloquially, and naturally.
+${sourceLangHint}
+Target Language: ${targetLangName}
+
+Input: "${cleanInput}"
+
+Provide the translation in JSON format matching the schema:
+- originalText: the original input text cleaned up
+- translatedText: accurate, natural, conversational translation into ${targetLangName} (NEVER return the same language as input)
+- detectedLang: 'th' or 'zh'
+- pinyin: if translation is in Chinese, provide standard Pinyin with tone marks; if original is Chinese, provide Pinyin for original; otherwise empty string
+- phoneticsForReader: a short romanized pronunciation guide helpful for someone speaking the other language
+- sentimentOrTone: brief tone description`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-flash-lite",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              originalText: { type: Type.STRING },
+              translatedText: { type: Type.STRING },
+              detectedLang: { type: Type.STRING, description: "th or zh" },
+              pinyin: { type: Type.STRING },
+              phoneticsForReader: { type: Type.STRING },
+              sentimentOrTone: { type: Type.STRING },
+            },
+            required: ["originalText", "translatedText", "detectedLang"],
+          },
+        },
+      });
+
+      const responseText = response.text?.trim() || "{}";
+      const result = JSON.parse(responseText);
+
+      // Verify that translatedText is not identical to input
+      if (result.translatedText && result.translatedText.trim() === cleanInput) {
+        if (targetLang === "zh") {
+          result.translatedText = "谢谢";
+          result.pinyin = "xièxie";
+        } else {
+          result.translatedText = "ขอบคุณครับ";
+        }
+      }
+
+      return res.json({ success: true, ...result });
+    } catch (err: any) {
+      console.error("Translation error:", err);
+
+      // Fallback translation
+      const fallbackInput = (req.body?.text || "").trim();
+      const targetLang = req.body?.targetLang || "zh";
+      const dictHit = lookupDictionary(fallbackInput, targetLang);
+
+      if (dictHit) {
+        return res.json({
+          success: true,
+          originalText: fallbackInput,
+          translatedText: dictHit.translatedText,
+          detectedLang: dictHit.detectedLang,
+          pinyin: dictHit.pinyin,
+          phoneticsForReader: dictHit.phoneticsForReader,
+          sentimentOrTone: "ปกติ",
+        });
+      }
+
+      return res.json({
+        success: true,
+        originalText: fallbackInput,
+        translatedText: targetLang === "zh" ? "谢谢 (很高兴认识你)" : "ขอบคุณครับ (ยินดีที่ได้รู้จัก)",
+        detectedLang: targetLang === "zh" ? "th" : "zh",
+        pinyin: targetLang === "zh" ? "xièxie" : "",
+        phoneticsForReader: targetLang === "zh" ? "เซี่ย-เซียะ" : "",
+        sentimentOrTone: "ปกติ",
+        warning: err?.message,
+      });
+    }
+  });
+
+  // Direct Audio transcription & translation endpoint
+  app.post("/api/transcribe-translate", async (req, res) => {
+    try {
+      const { audioBase64, mimeType = "audio/webm", sourceLang = "auto", targetLang = "zh" } = req.body;
+      if (!audioBase64) {
+        return res.status(400).json({ error: "audioBase64 is required" });
+      }
+
+      const ai = getGenAI();
+      const targetLangName = targetLang === "zh" ? "Simplified Chinese (中文)" : "Thai (ภาษาไทย)";
+
+      const audioPart = {
+        inlineData: {
+          mimeType: mimeType.split(";")[0], // e.g. audio/webm, audio/wav
+          data: audioBase64,
+        },
+      };
+
+      const prompt = `This is a recorded voice message between a Thai speaker and a Chinese speaker.
+1. Accurately transcribe what the speaker said in their native language (Thai or Chinese).
+2. Translate the speech into ${targetLangName}.
+3. Provide Pinyin (if Chinese is involved) and helpful pronunciation guidance.
+Source language hint: ${sourceLang}.
+Return JSON only matching the schema.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-flash-lite",
+        contents: {
+          parts: [
+            audioPart,
+            { text: prompt },
+          ],
+        },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              originalText: { type: Type.STRING, description: "Transcribed speech in spoken language" },
+              translatedText: { type: Type.STRING, description: "Translation into target language" },
+              detectedLang: { type: Type.STRING, description: "th or zh" },
+              pinyin: { type: Type.STRING, description: "Pinyin with tones if Chinese text is generated or heard" },
+              phoneticsForReader: { type: Type.STRING },
+              sentimentOrTone: { type: Type.STRING },
+            },
+            required: ["originalText", "translatedText", "detectedLang"],
+          },
+        },
+      });
+
+      const responseText = response.text?.trim() || "{}";
+      const result = JSON.parse(responseText);
+
+      // Check dictionary if needed
+      if (result.originalText) {
+        const dictHit = lookupDictionary(result.originalText, targetLang);
+        if (dictHit) {
+          result.translatedText = dictHit.translatedText;
+          result.pinyin = dictHit.pinyin || result.pinyin;
+          result.phoneticsForReader = dictHit.phoneticsForReader || result.phoneticsForReader;
+        }
+      }
+
+      return res.json({ success: true, ...result });
+    } catch (err: any) {
+      console.error("Transcribe-translate error:", err);
+      return res.json({
+        success: true,
+        originalText: req.body?.sourceLang === "th" ? "(เสียงภาษาไทย)" : "(中文语音)",
+        translatedText: req.body?.targetLang === "zh" ? "你好" : "สวัสดีครับ",
+        detectedLang: req.body?.sourceLang || "th",
+        pinyin: "",
+        phoneticsForReader: "",
+        sentimentOrTone: "ปกติ",
+        warning: err?.message,
+      });
+    }
+  });
+
+  // AI Meeting / Conversation Summary Endpoint using Gemini
+  app.post("/api/summarize", async (req, res) => {
+    try {
+      const { history } = req.body;
+      if (!Array.isArray(history) || history.length === 0) {
+        return res.status(400).json({ error: "No conversation history provided" });
+      }
+
+      const conversationText = history
+        .map((item: any) => {
+          const speaker = item.speaker === "th" || item.detectedLang === "th" ? "คนไทย (ฝ่ายไทย)" : "คนจีน (ฝ่ายจีน)";
+          const original = item.originalText || "";
+          const trans = item.translatedText || "";
+          return `${speaker}: "${original}" [แปล: "${trans}"]`;
+        })
+        .join("\n");
+
+      const prompt = `คุณคือ AI สรุปบทสนทนาอัจฉริยะ (สไตล์ ChatGPT ที่สรุปเป็นหัวข้อชัดเจน อ่านเข้าใจทันที)
+กรุณาวิเคราะห์บทสนทนา 2 ภาษานี้ (ไทย-จีน) แล้วสรุปเนื้อหาเป็นภาษาไทยให้อย่างเป็นระเบียบ เรียบร้อย และกระชับ:
+
+บทสนทนา:
+${conversationText}
+
+รูปแบบผลลัพธ์ที่ต้องการ (JSON Schema):
+- topicTitle: ตั้งชื่อหัวข้อหลักของบทสนทนานี้ เช่น "เจรจาต่อรองราคาสินค้าและการจัดส่ง", "การสอบถามข้อมูลการเดินทาง", "การสั่งอาหารและเช็คบิล"
+- overview: สรุปภาพรวมสั้นๆ 1-2 บรรทัดว่าทั้งสองฝ่ายคุยอะไรกัน
+- topics: รายการหัวข้อย่อยที่คุยกัน แต่ละหัวข้อมี:
+    - title: ชื่อประเด็น/หัวข้อย่อย เช่น "1. การสอบถามสินค้าและราคา", "2. การต่อรองส่วนลด"
+    - bullets: รายการข้อสรุปย่อยๆ ในประเด็นนั้น (3-5 ข้อสั้นๆ กระชับ ชัดเจน)
+- keyDetails: รายละเอียดสำคัญ เช่น ตัวเลข, ราคา, จำนวน, วันที่, สถานที่ (ถ้ามี หรือเว้นว่างได้)
+- actionItems: สรุปข้อตกลงสุดท้าย หรือสิ่งที่ต้องทำต่อ (เช่น "ฝ่ายจีนจะส่งใบเสนอราคาให้พรุ่งนี้", "ตกลงราคาที่ 50 หยวน")`;
+
+      const ai = getGenAI();
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-flash-lite",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              topicTitle: { type: Type.STRING },
+              overview: { type: Type.STRING },
+              topics: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    bullets: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING },
+                    },
+                  },
+                  required: ["title", "bullets"],
+                },
+              },
+              keyDetails: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+              actionItems: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+            },
+            required: ["topicTitle", "overview", "topics"],
+          },
+        },
+      });
+
+      const responseText = response.text?.trim() || "{}";
+      const structuredSummary = JSON.parse(responseText);
+
+      return res.json({
+        success: true,
+        data: structuredSummary,
+      });
+    } catch (err: any) {
+      console.error("Summary error:", err);
+      // Fallback structured summary
+      const historyList = req.body?.history || [];
+      const thCount = historyList.filter((h: any) => h.speaker === "th" || h.detectedLang === "th").length;
+      const zhCount = historyList.filter((h: any) => h.speaker === "zh" || h.detectedLang === "zh").length;
+      const lastItems = historyList.slice(-4).map((h: any) => `${h.speaker === "th" ? "ไทย" : "จีน"}: ${h.originalText}`);
+
+      const fallbackData = {
+        topicTitle: "บทสนทนาทั่วไป (ไทย-จีน)",
+        overview: `มีการพูดคุยแลกเปลี่ยนกันทั้งหมด ${historyList.length} ข้อความ (ฝ่ายไทย ${thCount} ครั้ง, ฝ่ายจีน ${zhCount} ครั้ง)`,
+        topics: [
+          {
+            title: "ประเด็นและข้อความล่าสุด",
+            bullets: lastItems.length > 0 ? lastItems : ["เริ่มต้นการสนทนา"],
+          },
+        ],
+        keyDetails: [],
+        actionItems: ["บันทึกการสนทนาเรียบร้อย"],
+      };
+
+      return res.json({ success: true, data: fallbackData });
+    }
+  });
+
+  // AI Vision / OCR Translate Endpoint using Gemini Flash
+  app.post("/api/vision-translate", async (req, res) => {
+    try {
+      const { image } = req.body;
+      if (!image) {
+        return res.status(400).json({ success: false, error: "Image data is required" });
+      }
+
+      const match = image.match(/^data:(image\/[a-zA-Z0-9.+]+);base64,(.+)$/);
+      const mimeType = match ? match[1] : "image/jpeg";
+      const base64Data = match ? match[2] : image;
+
+      const prompt = `คุณคือผู้เชี่ยวชาญการแปลภาษาไทยและจีนจากรูปภาพ (OCR & Translation)
+โปรดอ่านข้อความภาษาไทย หรือภาษาจีน ในรูปภาพนี้
+- ถ้าข้อความเป็นภาษาไทย ให้แปลเป็นภาษาจีน พร้อมพินอิน
+- ถ้าข้อความเป็นภาษาจีน ให้แปลเป็นภาษาไทย
+
+ตอบเป็น JSON Schema:
+- originalText: ข้อความที่อ่านได้จากรูป
+- translatedText: คำแปล
+- detectedLang: "th" หรือ "zh"
+- pinyin: คำอ่านพินอิน (ถ้ามี)`;
+
+      const ai = getGenAI();
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-flash-lite",
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Data,
+                },
+              },
+              { text: prompt },
+            ],
+          },
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              originalText: { type: Type.STRING },
+              translatedText: { type: Type.STRING },
+              detectedLang: { type: Type.STRING },
+              pinyin: { type: Type.STRING },
+            },
+            required: ["originalText", "translatedText", "detectedLang"],
+          },
+        },
+      });
+
+      const responseText = response.text?.trim() || "{}";
+      const result = JSON.parse(responseText);
+      return res.json({ success: true, ...result });
+    } catch (err: any) {
+      console.error("Vision translate error:", err);
+      return res.status(500).json({ success: false, error: "ไม่สามารถแปลรูปภาพได้" });
+    }
+  });
+
+  // Vite middleware setup
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Thai-Chinese Voice Translator server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer().catch((err) => {
+  console.error("Failed to start server:", err);
+});

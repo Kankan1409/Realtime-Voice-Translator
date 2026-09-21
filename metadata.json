@@ -1,0 +1,6 @@
+{
+  "name": "Thai-Chinese Realtime Voice Translator",
+  "description": "Real-time dual voice translation and live captions between Thai and Chinese with face-to-face screen mode and instant speech recognition.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
