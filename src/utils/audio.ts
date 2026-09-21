@@ -20,6 +20,9 @@ export class SpeechRecognitionSession {
   private onErrorCb?: (error: string) => void;
   private onEndCb?: () => void;
   private targetLanguage: 'th-TH' | 'zh-CN' = 'th-TH';
+  private latestTranscript = '';
+  private silenceTimer: any = null;
+  private isCompleted = false;
 
   constructor() {
     // Initialized on demand in start() for iOS reliability
@@ -38,27 +41,26 @@ export class SpeechRecognitionSession {
     }
 
     // Stop and clean up any previous instance
-    if (this.recognition) {
-      try {
-        this.recognition.abort();
-      } catch (e) {}
-      this.recognition = null;
-    }
+    this.stop();
 
     this.targetLanguage = lang === 'th' ? 'th-TH' : 'zh-CN';
     this.onResultCb = onResult;
     this.onErrorCb = onError;
     this.onEndCb = onEnd;
     this.isListening = true;
+    this.latestTranscript = '';
+    this.isCompleted = false;
 
     try {
       this.recognition = new SpeechRec();
-      this.recognition.continuous = false; // continuous: false is much more reliable on iOS Safari
+      this.recognition.continuous = false; // continuous: false is much more reliable on mobile
       this.recognition.interimResults = true;
       this.recognition.maxAlternatives = 1;
       this.recognition.lang = this.targetLanguage;
 
       this.recognition.onresult = (event: any) => {
+        if (this.isCompleted) return;
+
         let interimTranscript = '';
         let finalTranscript = '';
 
@@ -72,14 +74,38 @@ export class SpeechRecognitionSession {
           }
         }
 
+        const currentSpeech = (finalTranscript || interimTranscript).trim();
+        if (currentSpeech) {
+          this.latestTranscript = currentSpeech;
+        }
+
         if (finalTranscript && this.onResultCb) {
+          this.isCompleted = true;
+          if (this.silenceTimer) clearTimeout(this.silenceTimer);
           this.onResultCb(finalTranscript.trim(), true);
-        } else if (interimTranscript && this.onResultCb) {
+          return;
+        }
+
+        if (interimTranscript && this.onResultCb) {
           this.onResultCb(interimTranscript.trim(), false);
+
+          // Fast silence detector: if user pauses for 750ms after speaking, immediately commit translation
+          if (this.silenceTimer) clearTimeout(this.silenceTimer);
+          this.silenceTimer = setTimeout(() => {
+            if (!this.isCompleted && this.latestTranscript.trim() && this.onResultCb) {
+              this.isCompleted = true;
+              const textToTranslate = this.latestTranscript.trim();
+              this.onResultCb(textToTranslate, true);
+              try {
+                this.recognition?.stop();
+              } catch (e) {}
+            }
+          }, 750);
         }
       };
 
       this.recognition.onerror = (event: any) => {
+        if (this.silenceTimer) clearTimeout(this.silenceTimer);
         console.warn('Speech recognition error:', event.error);
         if (event.error === 'not-allowed') {
           this.onErrorCb?.('ไมโครโฟนถูกปฏิเสธ กรุณาอนุญาตไมโครโฟนในการตั้งค่า');
@@ -89,19 +115,36 @@ export class SpeechRecognitionSession {
       };
 
       this.recognition.onend = () => {
+        if (this.silenceTimer) clearTimeout(this.silenceTimer);
         this.isListening = false;
+        // If not completed yet and we have a transcript, commit it now
+        if (!this.isCompleted && this.latestTranscript.trim() && this.onResultCb) {
+          this.isCompleted = true;
+          this.onResultCb(this.latestTranscript.trim(), true);
+        }
         if (this.onEndCb) this.onEndCb();
       };
 
       this.recognition.start();
     } catch (e: any) {
+      if (this.silenceTimer) clearTimeout(this.silenceTimer);
       console.warn('Recognition start error:', e);
       this.isListening = false;
       this.onErrorCb?.(e.message || 'ไม่สามารถเปิดไมโครโฟนได้');
     }
   }
 
-  stop() {
+  stop(): string {
+    if (this.silenceTimer) {
+      clearTimeout(this.silenceTimer);
+      this.silenceTimer = null;
+    }
+    const pendingText = this.latestTranscript.trim();
+    if (!this.isCompleted && pendingText && this.onResultCb) {
+      this.isCompleted = true;
+      this.onResultCb(pendingText, true);
+    }
+
     this.isListening = false;
     if (this.recognition) {
       try {
@@ -111,7 +154,9 @@ export class SpeechRecognitionSession {
           this.recognition.abort();
         } catch {}
       }
+      this.recognition = null;
     }
+    return pendingText;
   }
 }
 

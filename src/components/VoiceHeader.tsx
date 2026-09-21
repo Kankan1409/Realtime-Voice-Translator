@@ -1,4 +1,5 @@
-import { Sparkles, Settings, FileText, QrCode } from 'lucide-react';
+import { Settings } from 'lucide-react';
+import { RobotIcon } from './RobotIcon';
 
 interface VoiceHeaderProps {
   onOpenSettings: () => void;
@@ -13,14 +14,16 @@ export function VoiceHeader({
 }: VoiceHeaderProps) {
   return (
     <header className="flex items-center justify-between px-5 py-3 bg-white border-b border-slate-100 text-slate-800 sticky top-0 z-30 shadow-xs">
-      {/* Left AI Sparkle / Summary Button */}
+      {/* Left AI Robot / Summary Button matching template image */}
       <button
         type="button"
         onClick={onOpenSummary}
-        className="flex items-center gap-1.5 p-2 rounded-xl text-blue-600 hover:bg-blue-50 transition"
+        className="flex items-center gap-1.5 py-1 px-1.5 rounded-xl hover:bg-blue-50 transition active:scale-95"
         title="สรุปการสนทนาด้วย AI"
       >
-        <Sparkles className="w-5 h-5 text-blue-600 fill-blue-600/20" />
+        <div className="w-8 h-8 rounded-xl bg-[#0066f5] flex items-center justify-center shadow-xs overflow-hidden">
+          <RobotIcon size={24} robotColor="#ffffff" bgFill="#0066f5" hasBackground={true} />
+        </div>
         {historyCount > 0 && (
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
             {historyCount}

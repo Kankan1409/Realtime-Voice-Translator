@@ -25,6 +25,16 @@ export interface ConversationSummary {
   keyDetails?: string[]; // รายละเอียดตัวเลข ราคา วันเวลา
 }
 
+export interface ConversationTopic {
+  id: string;
+  title: string;
+  overview?: string;
+  createdAt: number;
+  updatedAt: number;
+  records: TranslationRecord[];
+  summaryData?: ConversationSummary;
+}
+
 export type DisplayMode = 'face-to-face' | 'split' | 'subtitles';
 
 export interface QuickPhrase {

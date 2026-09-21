@@ -168,14 +168,14 @@ export function SettingsModal({
             <button
               type="button"
               onClick={() => {
-                if (confirm('คุณต้องการล้างประวัติข้อความทั้งหมดใช่หรือไม่?')) {
+                if (confirm('คุณต้องการล้างหัวข้อบทสนทนาทั้งหมดใช่หรือไม่?')) {
                   onClearHistory();
                   onClose();
                 }
               }}
               className="w-full py-2 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 transition border border-rose-200"
             >
-              ล้างประวัติการสนทนาทั้งหมด
+              ล้างประวัติหัวข้อบทสนทนาทั้งหมด
             </button>
           </div>
         </div>

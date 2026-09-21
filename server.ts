@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import dotenv from "dotenv";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 
 dotenv.config();
@@ -38,6 +38,24 @@ async function startServer() {
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", timestamp: Date.now() });
   });
+
+// In-memory LRU-like translation cache for 0ms repeated phrases
+const translationCache = new Map<string, any>();
+const MAX_CACHE_SIZE = 500;
+
+function getCachedTranslation(text: string, targetLang: string) {
+  const key = `${targetLang}:${text.toLowerCase().trim()}`;
+  return translationCache.get(key) || null;
+}
+
+function setCachedTranslation(text: string, targetLang: string, data: any) {
+  if (translationCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = translationCache.keys().next().value;
+    if (firstKey) translationCache.delete(firstKey);
+  }
+  const key = `${targetLang}:${text.toLowerCase().trim()}`;
+  translationCache.set(key, data);
+}
 
 // Built-in high accuracy dictionary for instant translation and fallback
 const DICT_TH_TO_ZH: Record<string, { zh: string; pinyin: string; phonetics: string }> = {
@@ -138,60 +156,59 @@ function lookupDictionary(text: string, targetLang: string) {
       }
 
       const cleanInput = text.trim();
-      const targetLangName = targetLang === "zh" ? "Simplified Chinese (中文)" : "Thai (ภาษาไทย)";
 
-      // 1. Check instant dictionary first for ultra-fast and 100% reliable translations
+      // 1. Check in-memory fast cache (0ms instant response)
+      const cached = getCachedTranslation(cleanInput, targetLang);
+      if (cached) {
+        return res.json({ success: true, ...cached, cached: true });
+      }
+
+      // 2. Check instant dictionary
       const dictHit = lookupDictionary(cleanInput, targetLang);
       if (dictHit) {
-        return res.json({
-          success: true,
+        const payload = {
           originalText: cleanInput,
           translatedText: dictHit.translatedText,
           detectedLang: dictHit.detectedLang,
           pinyin: dictHit.pinyin,
           phoneticsForReader: dictHit.phoneticsForReader,
-          sentimentOrTone: "สนทนาทั่วไป",
-        });
+        };
+        setCachedTranslation(cleanInput, targetLang, payload);
+        return res.json({ success: true, ...payload });
       }
 
-      // 2. Call Gemini API using high-quota gemini-3.1-flash-lite
+      // 3. Call Gemini API with ThinkingLevel.MINIMAL and low temperature for ultra-fast generation
       const ai = getGenAI();
-      const sourceLangHint =
-        sourceLang === "th"
-          ? "The source text is Thai (ภาษาไทย)."
-          : sourceLang === "zh"
-          ? "The source text is Chinese (中文)."
-          : "Auto-detect source language: if Thai, translate to Chinese; if Chinese, translate to Thai.";
+      const targetLangName = targetLang === "zh" ? "Chinese" : "Thai";
+      const sourceLangName = sourceLang === "th" ? "Thai" : sourceLang === "zh" ? "Chinese" : "auto";
 
-      const prompt = `You are a real-time bilateral live interpreter between Thai and Chinese.
-Translate the following spoken message accurately, colloquially, and naturally.
-${sourceLangHint}
-Target Language: ${targetLangName}
+      const prompt = `Translate this spoken conversational sentence between Thai and Chinese as an instantaneous live interpreter.
+From: ${sourceLangName}
+To: ${targetLangName}
+Input text: "${cleanInput}"
 
-Input: "${cleanInput}"
-
-Provide the translation in JSON format matching the schema:
-- originalText: the original input text cleaned up
-- translatedText: accurate, natural, conversational translation into ${targetLangName} (NEVER return the same language as input)
+Output JSON matching schema:
+- originalText: input text
+- translatedText: accurate, natural, spoken translation in ${targetLangName}
 - detectedLang: 'th' or 'zh'
-- pinyin: if translation is in Chinese, provide standard Pinyin with tone marks; if original is Chinese, provide Pinyin for original; otherwise empty string
-- phoneticsForReader: a short romanized pronunciation guide helpful for someone speaking the other language
-- sentimentOrTone: brief tone description`;
+- pinyin: standard Pinyin with tone marks if translation is Chinese, otherwise empty string`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3.1-flash-lite",
         contents: prompt,
         config: {
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.MINIMAL,
+          },
+          temperature: 0.1,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               originalText: { type: Type.STRING },
               translatedText: { type: Type.STRING },
-              detectedLang: { type: Type.STRING, description: "th or zh" },
+              detectedLang: { type: Type.STRING },
               pinyin: { type: Type.STRING },
-              phoneticsForReader: { type: Type.STRING },
-              sentimentOrTone: { type: Type.STRING },
             },
             required: ["originalText", "translatedText", "detectedLang"],
           },
@@ -211,6 +228,9 @@ Provide the translation in JSON format matching the schema:
         }
       }
 
+      // Cache this result for future instant retrieval
+      setCachedTranslation(cleanInput, targetLang, result);
+
       return res.json({ success: true, ...result });
     } catch (err: any) {
       console.error("Translation error:", err);
@@ -228,18 +248,16 @@ Provide the translation in JSON format matching the schema:
           detectedLang: dictHit.detectedLang,
           pinyin: dictHit.pinyin,
           phoneticsForReader: dictHit.phoneticsForReader,
-          sentimentOrTone: "ปกติ",
         });
       }
 
       return res.json({
         success: true,
         originalText: fallbackInput,
-        translatedText: targetLang === "zh" ? "谢谢 (很高兴认识你)" : "ขอบคุณครับ (ยินดีที่ได้รู้จัก)",
+        translatedText: targetLang === "zh" ? "谢谢" : "ขอบคุณครับ",
         detectedLang: targetLang === "zh" ? "th" : "zh",
         pinyin: targetLang === "zh" ? "xièxie" : "",
-        phoneticsForReader: targetLang === "zh" ? "เซี่ย-เซียะ" : "",
-        sentimentOrTone: "ปกติ",
+        phoneticsForReader: "",
         warning: err?.message,
       });
     }
@@ -279,6 +297,10 @@ Return JSON only matching the schema.`;
           ],
         },
         config: {
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.MINIMAL,
+          },
+          temperature: 0.1,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -286,9 +308,7 @@ Return JSON only matching the schema.`;
               originalText: { type: Type.STRING, description: "Transcribed speech in spoken language" },
               translatedText: { type: Type.STRING, description: "Translation into target language" },
               detectedLang: { type: Type.STRING, description: "th or zh" },
-              pinyin: { type: Type.STRING, description: "Pinyin with tones if Chinese text is generated or heard" },
-              phoneticsForReader: { type: Type.STRING },
-              sentimentOrTone: { type: Type.STRING },
+              pinyin: { type: Type.STRING, description: "Pinyin with tones if Chinese" },
             },
             required: ["originalText", "translatedText", "detectedLang"],
           },
