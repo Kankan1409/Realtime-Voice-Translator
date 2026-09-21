@@ -7,8 +7,6 @@ import {
   Copy,
   Check,
   Clock,
-  Bot,
-  FileText,
   ChevronRight,
   MessageSquare,
   CheckCircle2,
@@ -68,7 +66,7 @@ export function HistorySummaryModal({
     text += `📝 ภาพรวม: ${summaryData.overview}\n\n`;
 
     if (summaryData.topics && summaryData.topics.length > 0) {
-      text += `📋 หัวข้อหลักที่พูดคุยกัน:\n`;
+      text += `📋 สาระสำคัญแยกตามหัวข้อ:\n`;
       summaryData.topics.forEach((top, idx) => {
         text += `${idx + 1}. ${top.title}\n`;
         top.bullets.forEach((b) => {
@@ -105,24 +103,26 @@ export function HistorySummaryModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-fadeIn">
-      <div className="bg-slate-950 border border-slate-800 rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-white border border-slate-200/90 rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden text-slate-800">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/60">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-rose-500 flex items-center justify-center text-slate-950 font-bold shadow-md">
-              <Bot className="w-4 h-4 text-slate-950" />
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-white">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shadow-xs">
+              <Sparkles className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <h2 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
-                <span>ประวัติและการสรุปด้วย AI</span>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-amber-300 font-semibold border border-amber-500/20">
+              <div className="flex items-center gap-2">
+                <h2 className="font-bold text-slate-900 text-base sm:text-lg">
+                  ประวัติและการสรุปด้วย AI
+                </h2>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">
                   {records.length} ข้อความ
                 </span>
-              </h2>
-              <p className="text-[11px] text-slate-400">
-                สรุปสาระสำคัญเป็นหัวข้อๆ เหมือน ChatGPT หรือดูบทสนทนาย้อนหลัง
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                สรุปสาระสำคัญเป็นหัวข้อย่อย หรือดูบทสนทนาย้อนหลัง
               </p>
             </div>
           </div>
@@ -137,7 +137,7 @@ export function HistorySummaryModal({
                     setSummaryData(null);
                   }
                 }}
-                className="text-xs text-rose-400 hover:text-rose-300 px-2 py-1 flex items-center gap-1 rounded-lg hover:bg-rose-950/30 transition"
+                className="text-xs text-rose-600 hover:text-rose-700 px-2.5 py-1.5 flex items-center gap-1 rounded-xl hover:bg-rose-50 transition"
                 title="ลบประวัติทั้งหมด"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -147,23 +147,23 @@ export function HistorySummaryModal({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Tab Navigation (สลับดู สรุปเป็นหัวข้อ VS ประวัติแชท) */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-slate-900 bg-slate-900/30">
-          <div className="flex items-center gap-1 p-1 bg-slate-900/80 rounded-xl border border-slate-800">
+        {/* Tab Navigation (สลับดู สรุปเป็นหัวข้อ VS ประวัติข้อความ) */}
+        <div className="flex items-center justify-between px-5 py-2.5 border-b border-slate-100 bg-slate-50/70">
+          <div className="flex items-center gap-1.5 p-1 bg-slate-200/60 rounded-2xl">
             <button
               type="button"
               onClick={() => setActiveTab('summary')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-xs ${
                 activeTab === 'summary'
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
@@ -173,10 +173,10 @@ export function HistorySummaryModal({
             <button
               type="button"
               onClick={() => setActiveTab('chat')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
                 activeTab === 'chat'
-                  ? 'bg-slate-800 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <MessageSquare className="w-3.5 h-3.5" />
@@ -188,93 +188,95 @@ export function HistorySummaryModal({
             <button
               type="button"
               onClick={handleCopySummaryFormatted}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-medium transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition"
             >
-              {copiedSummary ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              {copiedSummary ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copiedSummary ? 'คัดลอกแล้ว' : 'คัดลอกข้อสรุป'}</span>
             </button>
           )}
         </div>
 
-        {/* Tab Content: Summary vs Chat History */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+        {/* Tab Content */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50/40">
           {activeTab === 'summary' ? (
-            /* AI Summary View (ChatGPT Style) */
+            /* AI Summary View */
             <div className="space-y-4">
-              {/* Trigger Button if not generated or to regenerate */}
-              <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800 shadow-md">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-amber-400" />
-                      <span>สรุปบทสนทนาเป็นหัวข้อๆ (สไตล์ ChatGPT)</span>
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      วิเคราะห์ข้อความทั้งหมด แยกประเด็น ตัวเลข ข้อตกลง และสิ่งที่ต้องทำต่อ
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleGenerateSummary}
-                    disabled={records.length === 0 || isLoadingSummary}
-                    className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-40 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition shrink-0"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>{isLoadingSummary ? 'กำลังวิเคราะห์...' : summaryData ? '🔄 สรุปใหม่อีกครั้ง' : '✨ สรุปทันที'}</span>
-                  </button>
+              {/* Trigger Card */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-blue-600" />
+                    <span>สรุปบทสนทนาเป็นหัวข้อย่อย</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    วิเคราะห์ข้อความทั้งหมด แยกประเด็น ตัวเลข ข้อตกลง และสิ่งที่ต้องทำต่อ
+                  </p>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={handleGenerateSummary}
+                  disabled={records.length === 0 || isLoadingSummary}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-[#0066f5] hover:bg-blue-600 disabled:opacity-40 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition shrink-0"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{isLoadingSummary ? 'กำลังวิเคราะห์...' : summaryData ? '🔄 สรุปใหม่อีกครั้ง' : '✨ สรุปทันที'}</span>
+                </button>
               </div>
 
               {isLoadingSummary && (
                 <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
-                  <div className="w-8 h-8 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
-                  <p className="text-xs sm:text-sm text-amber-300 font-medium">
+                  <div className="w-8 h-8 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
+                  <p className="text-xs sm:text-sm text-blue-700 font-medium">
                     AI กำลังอ่านและจัดแบ่งหัวข้อการสนทนา...
                   </p>
                 </div>
               )}
 
               {!isLoadingSummary && !summaryData && (
-                <div className="py-12 text-center text-slate-500 text-xs sm:text-sm space-y-2">
-                  <div className="text-2xl">🤖</div>
-                  <div>แตะปุ่ม "✨ สรุปทันที" ด้านบน เพื่อให้ AI สรุปบทสนทนาที่เพิ่งคุยไปเป็นหัวข้อๆ ได้เลยครับ</div>
+                <div className="py-12 text-center text-slate-400 text-xs sm:text-sm space-y-2">
+                  <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center mx-auto mb-2">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  <div className="text-slate-600 font-medium">
+                    แตะปุ่ม "✨ สรุปทันที" ด้านบน เพื่อให้ AI สรุปบทสนทนาที่เพิ่งคุยไปเป็นหัวข้อๆ ได้เลยครับ
+                  </div>
                 </div>
               )}
 
-              {/* Structured ChatGPT-style Summary Output */}
+              {/* Structured Summary Output matching App Template */}
               {!isLoadingSummary && summaryData && (
                 <div className="space-y-4 animate-fadeIn">
                   {/* Topic Title Card */}
-                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20">
-                    <div className="flex items-center gap-1.5 text-xs text-amber-400 font-bold uppercase tracking-wider mb-1">
+                  <div className="p-4 sm:p-5 rounded-2xl bg-blue-50/70 border border-blue-200/80">
+                    <div className="flex items-center gap-1.5 text-xs text-blue-700 font-bold uppercase tracking-wider mb-1">
                       <Tag className="w-3.5 h-3.5" />
                       <span>หัวข้อการสนทนาหลัก</span>
                     </div>
-                    <h3 className="text-lg sm:text-xl font-extrabold text-white">
+                    <h3 className="text-lg sm:text-xl font-bold text-slate-900">
                       {summaryData.topicTitle}
                     </h3>
-                    <p className="text-xs sm:text-sm text-slate-300 mt-2 leading-relaxed">
+                    <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed">
                       {summaryData.overview}
                     </p>
                   </div>
 
-                  {/* Topics Breakdown (หัวข้อย่อยๆ เหมือน ChatGPT) */}
+                  {/* Topics Breakdown */}
                   {summaryData.topics && summaryData.topics.length > 0 && (
                     <div className="space-y-3">
-                      <h4 className="text-xs font-bold text-slate-400 flex items-center gap-1.5 uppercase tracking-wider">
-                        <ListOrdered className="w-3.5 h-3.5 text-amber-400" />
-                        <span>สาระสำคัญแยกตามหัวข้อ (Topics)</span>
+                      <h4 className="text-xs font-bold text-slate-500 flex items-center gap-1.5 uppercase tracking-wider">
+                        <ListOrdered className="w-3.5 h-3.5 text-blue-600" />
+                        <span>สาระสำคัญแยกตามหัวข้อ</span>
                       </h4>
 
                       <div className="grid gap-3">
                         {summaryData.topics.map((topic, tIdx) => (
                           <div
                             key={tIdx}
-                            className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-sm"
+                            className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs"
                           >
-                            <div className="font-bold text-amber-300 text-sm mb-2 flex items-center gap-2">
-                              <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-xs flex items-center justify-center shrink-0">
+                            <div className="font-bold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                              <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs flex items-center justify-center shrink-0 font-bold">
                                 {tIdx + 1}
                               </span>
                               <span>{topic.title}</span>
@@ -284,7 +286,7 @@ export function HistorySummaryModal({
                               {topic.bullets.map((b, bIdx) => (
                                 <li
                                   key={bIdx}
-                                  className="text-xs sm:text-sm text-slate-200 list-disc leading-relaxed marker:text-amber-400"
+                                  className="text-xs sm:text-sm text-slate-600 list-disc leading-relaxed marker:text-blue-500"
                                 >
                                   {b}
                                 </li>
@@ -298,17 +300,17 @@ export function HistorySummaryModal({
 
                   {/* Key Details & Figures */}
                   {summaryData.keyDetails && summaryData.keyDetails.length > 0 && (
-                    <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800">
-                      <h4 className="text-xs font-bold text-slate-300 flex items-center gap-1.5 mb-2">
+                    <div className="p-4 rounded-2xl bg-white border border-slate-200">
+                      <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5 mb-2">
                         <span>🔍 รายละเอียดสำคัญ / ตัวเลข / ราคา</span>
                       </h4>
                       <div className="grid sm:grid-cols-2 gap-2">
                         {summaryData.keyDetails.map((k, kIdx) => (
                           <div
                             key={kIdx}
-                            className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80 text-xs text-slate-200 flex items-center gap-2"
+                            className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-700 flex items-center gap-2"
                           >
-                            <span className="text-amber-400 font-bold">•</span>
+                            <span className="text-blue-600 font-bold">•</span>
                             <span>{k}</span>
                           </div>
                         ))}
@@ -316,20 +318,20 @@ export function HistorySummaryModal({
                     </div>
                   )}
 
-                  {/* Agreements / Action Items */}
+                  {/* Action Items */}
                   {summaryData.actionItems && summaryData.actionItems.length > 0 && (
-                    <div className="p-4 rounded-2xl bg-emerald-950/20 border border-emerald-500/30">
-                      <h4 className="text-xs font-bold text-emerald-400 flex items-center gap-1.5 mb-2">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200">
+                      <h4 className="text-xs font-bold text-emerald-800 flex items-center gap-1.5 mb-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         <span>ข้อตกลงร่วมกัน หรือสิ่งที่ต้องทำต่อ</span>
                       </h4>
                       <ul className="space-y-1.5 pl-2">
                         {summaryData.actionItems.map((act, aIdx) => (
                           <li
                             key={aIdx}
-                            className="text-xs sm:text-sm text-emerald-200 flex items-start gap-2 leading-relaxed"
+                            className="text-xs sm:text-sm text-emerald-900 flex items-start gap-2 leading-relaxed"
                           >
-                            <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                             <span>{act}</span>
                           </li>
                         ))}
@@ -340,10 +342,10 @@ export function HistorySummaryModal({
               )}
             </div>
           ) : (
-            /* Individual Chat Stream View */
-            <div className="space-y-2.5">
+            /* Chat History View (Matching Template Theme) */
+            <div className="space-y-3">
               {records.length === 0 ? (
-                <div className="text-center py-12 text-slate-500 text-sm">
+                <div className="text-center py-12 text-slate-400 text-sm">
                   ยังไม่มีประวัติการสนทนา แตะไมค์ที่หน้าหลักเพื่อเริ่มพูดคุย
                 </div>
               ) : (
@@ -357,32 +359,24 @@ export function HistorySummaryModal({
                   return (
                     <div
                       key={rec.id}
-                      className={`p-3.5 rounded-2xl border transition ${
-                        isThai
-                          ? 'bg-amber-500/5 border-amber-500/20 hover:border-amber-500/40'
-                          : 'bg-rose-500/5 border-rose-500/20 hover:border-rose-500/40'
-                      }`}
+                      className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs space-y-1.5"
                     >
-                      <div className="flex items-center justify-between text-xs mb-1.5">
-                        <span
-                          className={`font-semibold flex items-center gap-1 ${
-                            isThai ? 'text-amber-400' : 'text-rose-400'
-                          }`}
-                        >
-                          <span>{isThai ? '🇹🇭 คนไทยพูด' : '🇨🇳 中国人说'}</span>
-                          <ChevronRight className="w-3 h-3 opacity-40" />
-                          <span className="opacity-80 font-normal">
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="font-bold text-slate-500 flex items-center gap-1">
+                          <span>{isThai ? '🇹🇭 ผู้พูดภาษาไทย' : '🇨🇳 中文原声'}</span>
+                          <ChevronRight className="w-3 h-3 text-slate-300" />
+                          <span className="text-blue-600 font-medium">
                             {isThai ? 'แปลเป็นจีน' : 'แปลเป็นไทย'}
                           </span>
                         </span>
 
-                        <div className="flex items-center gap-1.5 text-slate-500 text-[11px]">
+                        <div className="flex items-center gap-2 text-slate-400 text-[11px]">
                           <Clock className="w-3 h-3" />
                           <span>{timeFormatted}</span>
                           <button
                             type="button"
                             onClick={() => onSpeak(rec.translatedText, isThai ? 'zh' : 'th')}
-                            className="p-1 hover:text-white text-slate-400 transition"
+                            className="p-1 hover:text-blue-600 text-slate-400 transition"
                             title="ฟังเสียงอ่าน"
                           >
                             <Volume2 className="w-3.5 h-3.5" />
@@ -390,11 +384,11 @@ export function HistorySummaryModal({
                           <button
                             type="button"
                             onClick={() => handleCopyItem(rec.translatedText, rec.id)}
-                            className="p-1 hover:text-white text-slate-400 transition"
+                            className="p-1 hover:text-blue-600 text-slate-400 transition"
                             title="คัดลอกคำแปล"
                           >
                             {copiedId === rec.id ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
                             ) : (
                               <Copy className="w-3.5 h-3.5" />
                             )}
@@ -402,21 +396,21 @@ export function HistorySummaryModal({
                         </div>
                       </div>
 
-                      {/* Translated Text */}
-                      <div className="text-base sm:text-lg font-bold text-white leading-snug">
-                        {rec.translatedText}
+                      {/* Original Speech */}
+                      <div className="text-xs text-slate-400 italic">
+                        "{rec.originalText}"
                       </div>
 
-                      {/* Pinyin if available */}
-                      {rec.pinyin && (
-                        <div className="text-xs text-amber-300 font-mono mt-0.5">
-                          {rec.pinyin}
+                      {/* Translated Text in vibrant blue card pill */}
+                      <div className="mt-1.5 p-3 rounded-xl bg-[#0066f5] text-white">
+                        <div className="text-sm font-semibold leading-snug">
+                          {rec.translatedText}
                         </div>
-                      )}
-
-                      {/* Original Speech */}
-                      <div className="text-xs text-slate-400 mt-1 italic">
-                        "{rec.originalText}"
+                        {rec.pinyin && (
+                          <div className="text-xs text-blue-100 font-mono mt-1 pt-1 border-t border-white/20">
+                            {rec.pinyin}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -427,14 +421,14 @@ export function HistorySummaryModal({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-3 bg-slate-900/60 border-t border-slate-900 flex justify-between items-center px-5">
-          <div className="text-[11px] text-slate-400">
+        <div className="p-4 bg-white border-t border-slate-100 flex justify-between items-center px-5">
+          <div className="text-xs text-slate-400 font-medium">
             {records.length} ประโยคที่บันทึกไว้ในเครื่อง
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+            className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
           >
             ปิดหน้าต่าง
           </button>

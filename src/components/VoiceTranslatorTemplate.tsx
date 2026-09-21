@@ -82,50 +82,21 @@ export function VoiceTranslatorTemplate({
           const isThaiSpeaker = rec.speaker === 'th';
 
           return (
-            <div key={rec.id} className="space-y-2.5 animate-fadeIn">
-              {/* Original Speech Bubble: White Card with shadow */}
-              <div
-                className={`rounded-2xl p-4 shadow-sm border transition ${
-                  isThaiSpeaker
-                    ? 'bg-white border-slate-200/80 mr-6 sm:mr-12'
-                    : 'bg-white border-slate-200/80 mr-6 sm:mr-12'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    {isThaiSpeaker ? '🇹🇭 ผู้พูดภาษาไทย (Thai)' : '🇨🇳 中文原声 (Chinese)'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onSpeak(rec.originalText, isThaiSpeaker ? 'th' : 'zh')}
-                    className="p-1 text-slate-400 hover:text-blue-600 transition"
-                    title="ฟังเสียงต้นฉบับ"
-                  >
-                    <Volume2 className="w-4 h-4" />
-                  </button>
-                </div>
-                <p className={`${textSizeClass} text-slate-800 font-medium leading-relaxed`}>
-                  {rec.originalText}
-                </p>
-              </div>
-
-              {/* Translated Speech Bubble: Vibrant Solid Blue Card (Exact style from screenshot) */}
-              <div
-                className={`rounded-2xl p-4 shadow-md transition ${
-                  isThaiSpeaker
-                    ? 'bg-[#0066f5] text-white ml-6 sm:ml-12'
-                    : 'bg-[#0066f5] text-white ml-6 sm:ml-12'
-                }`}
-              >
+            <div key={rec.id} className="animate-fadeIn">
+              {/* Single Direct Translation Card: Vibrant Solid Blue Card */}
+              <div className="rounded-2xl p-4 shadow-md bg-[#0066f5] text-white transition">
                 <div className="flex items-center justify-between mb-1.5 opacity-90">
-                  <span className="text-[11px] font-semibold text-blue-100 tracking-wider">
-                    {isThaiSpeaker ? '🇨🇳 คำแปลภาษาจีน (Chinese)' : '🇹🇭 คำแปลภาษาไทย (Thai)'}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-base">{isThaiSpeaker ? '🇨🇳' : '🇹🇭'}</span>
+                    <span className="text-xs font-bold text-blue-100 tracking-wider">
+                      {isThaiSpeaker ? 'คำแปลภาษาจีน (Chinese)' : 'คำแปลภาษาไทย (Thai)'}
+                    </span>
+                  </div>
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => onSpeak(rec.translatedText, isThaiSpeaker ? 'zh' : 'th')}
-                      className="p-1 hover:bg-white/20 rounded-lg text-white transition"
+                      className="p-1.5 hover:bg-white/20 rounded-lg text-white transition"
                       title="ฟังเสียงอ่าน"
                     >
                       <Volume2 className="w-4 h-4" />
@@ -133,7 +104,7 @@ export function VoiceTranslatorTemplate({
                     <button
                       type="button"
                       onClick={() => handleCopy(rec.translatedText, rec.id)}
-                      className="p-1 hover:bg-white/20 rounded-lg text-white transition"
+                      className="p-1.5 hover:bg-white/20 rounded-lg text-white transition"
                       title="คัดลอก"
                     >
                       {copiedId === rec.id ? (
@@ -145,15 +116,32 @@ export function VoiceTranslatorTemplate({
                   </div>
                 </div>
 
-                <p className={`${textSizeClass} font-semibold leading-relaxed tracking-wide`}>
+                {/* Primary Translated Output */}
+                <p className={`${textSizeClass} font-bold leading-relaxed tracking-wide mt-1`}>
                   {rec.translatedText}
                 </p>
 
+                {/* Pinyin if translating to Chinese */}
                 {showPinyin && rec.pinyin && isThaiSpeaker && (
-                  <div className="text-xs text-blue-100 font-mono mt-1.5 pt-1 border-t border-white/20">
+                  <div className="text-xs text-blue-100 font-mono mt-1.5 pt-1.5 border-t border-white/20">
                     {rec.pinyin}
                   </div>
                 )}
+
+                {/* Subtle source reference at bottom so it doesn't clutter */}
+                <div className="mt-2 pt-1 border-t border-white/10 flex items-center justify-between text-[11px] text-blue-200/80">
+                  <span className="truncate max-w-[85%]">
+                    เสียงต้นฉบับ: "{rec.originalText}"
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onSpeak(rec.originalText, isThaiSpeaker ? 'th' : 'zh')}
+                    className="p-0.5 hover:text-white transition"
+                    title="ฟังเสียงต้นฉบับ"
+                  >
+                    <Volume2 className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
             </div>
           );

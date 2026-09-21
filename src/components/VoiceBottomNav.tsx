@@ -1,6 +1,6 @@
-import { Type, Camera, Mic, Keyboard, History } from 'lucide-react';
+import { Type, Camera, Mic, History } from 'lucide-react';
 
-export type BottomNavTab = 'text' | 'camera' | 'voice' | 'keyboard' | 'history';
+export type BottomNavTab = 'text' | 'camera' | 'voice' | 'history';
 
 interface VoiceBottomNavProps {
   currentTab: BottomNavTab;
@@ -14,12 +14,12 @@ export function VoiceBottomNav({
   historyCount,
 }: VoiceBottomNavProps) {
   return (
-    <nav className="bg-white border-t border-slate-200/80 px-3 py-2 flex items-center justify-around text-slate-400 select-none pb-safe">
+    <nav className="bg-white border-t border-slate-200/80 px-4 py-2 flex items-center justify-around text-slate-400 select-none pb-safe">
       {/* 1. Text */}
       <button
         type="button"
         onClick={() => onTabChange('text')}
-        className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition ${
+        className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition ${
           currentTab === 'text'
             ? 'text-blue-600 font-bold'
             : 'hover:text-slate-600'
@@ -33,7 +33,7 @@ export function VoiceBottomNav({
       <button
         type="button"
         onClick={() => onTabChange('camera')}
-        className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition ${
+        className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition ${
           currentTab === 'camera'
             ? 'text-blue-600 font-bold'
             : 'hover:text-slate-600'
@@ -47,7 +47,7 @@ export function VoiceBottomNav({
       <button
         type="button"
         onClick={() => onTabChange('voice')}
-        className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition ${
+        className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition ${
           currentTab === 'voice'
             ? 'text-blue-600 font-bold'
             : 'hover:text-slate-600'
@@ -63,25 +63,11 @@ export function VoiceBottomNav({
         <span className="text-[11px] font-medium">Voice</span>
       </button>
 
-      {/* 4. Keyboard */}
-      <button
-        type="button"
-        onClick={() => onTabChange('keyboard')}
-        className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition ${
-          currentTab === 'keyboard'
-            ? 'text-blue-600 font-bold'
-            : 'hover:text-slate-600'
-        }`}
-      >
-        <Keyboard className="w-5 h-5" />
-        <span className="text-[11px] font-medium">Keyboard</span>
-      </button>
-
-      {/* 5. History */}
+      {/* 4. History */}
       <button
         type="button"
         onClick={() => onTabChange('history')}
-        className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition relative ${
+        className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition relative ${
           currentTab === 'history'
             ? 'text-blue-600 font-bold'
             : 'hover:text-slate-600'

@@ -3,7 +3,6 @@ import { VoiceHeader } from './components/VoiceHeader';
 import { VoiceTranslatorTemplate } from './components/VoiceTranslatorTemplate';
 import { VoiceBottomNav, BottomNavTab } from './components/VoiceBottomNav';
 import { SettingsModal } from './components/SettingsModal';
-import { KeyboardInputModal } from './components/KeyboardInputModal';
 import { CameraTranslateModal } from './components/CameraTranslateModal';
 import { TextTranslateModal } from './components/TextTranslateModal';
 import { HistorySummaryModal } from './components/HistorySummaryModal';
@@ -59,7 +58,6 @@ export default function App() {
   // Modals & Navigation
   const [currentTab, setCurrentTab] = useState<BottomNavTab>('voice');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isTextOpen, setIsTextOpen] = useState(false);
   const [isHistorySummaryOpen, setIsHistorySummaryOpen] = useState(false);
@@ -200,44 +198,40 @@ export default function App() {
         setInterimTranscript('');
       }
     } else if (audioRecorderRef.current) {
-      const audioBlob = await audioRecorderRef.current.stop();
+      const audioResult = await audioRecorderRef.current.stop();
       setIsListening(false);
       setInterimTranscript('กำลังประมวลผลเสียง...');
 
-      if (audioBlob && activeSpeaker) {
+      if (audioResult && activeSpeaker) {
         try {
-          const reader = new FileReader();
-          reader.readAsDataURL(audioBlob);
-          reader.onloadend = async () => {
-            const base64Audio = reader.result as string;
-            const targetLang = activeSpeaker === 'th' ? 'zh' : 'th';
-            const response = await fetch('/api/transcribe-translate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                audio: base64Audio,
-                sourceLang: activeSpeaker,
-                targetLang,
-              }),
-            });
+          const base64Audio = `data:${audioResult.mimeType};base64,${audioResult.base64}`;
+          const targetLang = activeSpeaker === 'th' ? 'zh' : 'th';
+          const response = await fetch('/api/transcribe-translate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              audio: base64Audio,
+              sourceLang: activeSpeaker,
+              targetLang,
+            }),
+          });
 
-            const data = await response.json();
-            if (data.success && data.translatedText) {
-              const newRecord: TranslationRecord = {
-                id: 'rec-' + Date.now(),
-                timestamp: Date.now(),
-                speaker: activeSpeaker,
-                originalText: data.originalText,
-                translatedText: data.translatedText,
-                pinyin: data.pinyin,
-                phoneticsForReader: data.phoneticsForReader,
-              };
-              setRecords((prev) => [...prev, newRecord]);
-              if (autoSpeak) {
-                speakText(data.translatedText, activeSpeaker === 'th' ? 'zh' : 'th');
-              }
+          const data = await response.json();
+          if (data.success && data.translatedText) {
+            const newRecord: TranslationRecord = {
+              id: 'rec-' + Date.now(),
+              timestamp: Date.now(),
+              speaker: activeSpeaker,
+              originalText: data.originalText,
+              translatedText: data.translatedText,
+              pinyin: data.pinyin,
+              phoneticsForReader: data.phoneticsForReader,
+            };
+            setRecords((prev) => [...prev, newRecord]);
+            if (autoSpeak) {
+              speakText(data.translatedText, activeSpeaker === 'th' ? 'zh' : 'th');
             }
-          };
+          }
         } catch (e) {
           console.error(e);
           showToast('แปลเสียงไม่สำเร็จ');
@@ -258,8 +252,6 @@ export default function App() {
       setIsTextOpen(true);
     } else if (tab === 'camera') {
       setIsCameraOpen(true);
-    } else if (tab === 'keyboard') {
-      setIsKeyboardOpen(true);
     } else if (tab === 'history') {
       setIsHistorySummaryOpen(true);
     }
@@ -289,7 +281,7 @@ export default function App() {
         />
       </main>
 
-      {/* 3. Bottom 5-Tab Navigation Bar (Text | Camera | Voice | Keyboard | History) */}
+      {/* 3. Bottom 4-Tab Navigation Bar (Text | Camera | Voice | History) */}
       <VoiceBottomNav
         currentTab={currentTab}
         onTabChange={handleTabChange}
@@ -307,17 +299,6 @@ export default function App() {
         fontSize={fontSize}
         onChangeFontSize={setFontSize}
         onClearHistory={handleClearHistory}
-      />
-
-      <KeyboardInputModal
-        isOpen={isKeyboardOpen}
-        onClose={() => {
-          setIsKeyboardOpen(false);
-          setCurrentTab('voice');
-        }}
-        onSendText={async (text, lang) => {
-          await handleTranslateText(text, lang);
-        }}
       />
 
       <TextTranslateModal

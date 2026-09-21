@@ -20,7 +20,7 @@ export interface SummaryTopic {
 export interface ConversationSummary {
   topicTitle: string; // หัวข้อหลักของแชท เช่น "ต่อรองราคาสินค้าและค่าจัดส่ง"
   overview: string; // สรุปภาพรวมสั้นๆ
-  topics: SummaryTopic[]; // แต่ละหัวข้อย่อยแบบ ChatGPT
+  topics: SummaryTopic[]; // แต่ละหัวข้อย่อย
   actionItems?: string[]; // สิ่งที่ตกลงกัน หรือต้องทำต่อ
   keyDetails?: string[]; // รายละเอียดตัวเลข ราคา วันเวลา
 }
