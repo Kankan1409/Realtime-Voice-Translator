@@ -89,6 +89,31 @@ const DICT_TH_TO_ZH: Record<string, { zh: string; pinyin: string; phonetics: str
   "ขอโทษค่ะ": { zh: "对不起", pinyin: "duìbuqǐ", phonetics: "ตุ้ย-ปู้-ฉี่" },
   "ไม่เป็นไร": { zh: "没关系", pinyin: "méi guānxi", phonetics: "เหมย-กวาน-ซี" },
   "ลาก่อน": { zh: "再见", pinyin: "zàijiàn", phonetics: "ไจ้-เจี้ยน" },
+  "สบายดีไหม": { zh: "你好吗？", pinyin: "nǐ hǎo ma?", phonetics: "หนี-ห่าว-มา" },
+  "สบายดี": { zh: "我很好", pinyin: "wǒ hěn hǎo", phonetics: "หว่อ-เหิ่น-ห่าว" },
+  "ช่วยด้วย": { zh: "救命 / 请帮帮我", pinyin: "qǐng bāngbang wǒ", phonetics: "ฉิ่ง-ปาง-ปาง-หว่อ" },
+  "อันนี้คืออะไร": { zh: "这是什么？", pinyin: "zhè shì shénme?", phonetics: "เจ้อ-ซื่อ-เสิน-เมอะ" },
+  "เข้าใจไหม": { zh: "明白吗？", pinyin: "míngbai ma?", phonetics: "หมิง-ไป๋-มา" },
+  "เข้าใจแล้ว": { zh: "明白了 / 知道了", pinyin: "míngbai le", phonetics: "หมิง-ไป๋-เลอ" },
+  "ไม่เข้าใจ": { zh: "我不明白", pinyin: "wǒ bù míngbai", phonetics: "หว่อ-ปู้-หมิง-ไป๋" },
+  "พูดภาษาอังกฤษได้ไหม": { zh: "你会说英语吗？", pinyin: "nǐ huì shuō yīngyǔ ma?", phonetics: "หนี่-ฮุ่ย-ซัว-อิง-ยวี่-มา" },
+  "โรงแรมอยู่ที่ไหน": { zh: "酒店在哪里？", pinyin: "jiǔdiàn zài nǎlǐ?", phonetics: "จิ่ว-เตี้ยน-ไจ้-หนา-หลี่" },
+  "สนามบิน": { zh: "机场", pinyin: "jīchǎng", phonetics: "จี-ฉ่าง" },
+  "ไปสนามบิน": { zh: "去机场", pinyin: "qù jīchǎng", phonetics: "ชวี่-จี-ฉ่าง" },
+  "สถานีรถไฟ": { zh: "火车站", pinyin: "huǒchēzhàn", phonetics: "หั่ว-เชอ-จ้าน" },
+  "แท็กซี่": { zh: "出租车", pinyin: "chūzūchē", phonetics: "ชู-จู-เชอ" },
+  "รอสักครู่": { zh: "请稍等", pinyin: "qǐng shāoděng", phonetics: "ฉิ่ง-เซา-เติ่ง" },
+  "น้ำเปล่า": { zh: "水 / 矿泉水", pinyin: "kuàngquánshuǐ", phonetics: "คว่าง-เฉวียน-สุ่ย" },
+  "เอาอันนี้": { zh: "我要这个", pinyin: "wǒ yào zhège", phonetics: "หว่อ-เย่า-เจ้อ-เกอะ" },
+  "ไม่เอา": { zh: "不要", pinyin: "bù yào", phonetics: "ปู้-เย่า" },
+  "ชอบมาก": { zh: "我很喜欢", pinyin: "wǒ hěn xǐhuan", phonetics: "หว่อ-เหิ่น-สี่-ฮวน" },
+  "หนึ่ง": { zh: "一", pinyin: "yī", phonetics: "อี" },
+  "สอง": { zh: "二", pinyin: "èr", phonetics: "เอ้อร์" },
+  "สาม": { zh: "三", pinyin: "sān", phonetics: "ซาน" },
+  "สี่": { zh: "四", pinyin: "sì", phonetics: "ซื่อ" },
+  "ห้า": { zh: "五", pinyin: "wǔ", phonetics: "อู่" },
+  "สิบ": { zh: "十", pinyin: "shí", phonetics: "สือ" },
+  "ร้อย": { zh: "百", pinyin: "bǎi", phonetics: "ไป่" },
 };
 
 const DICT_ZH_TO_TH: Record<string, { th: string; pinyin: string; phonetics: string }> = {
@@ -97,6 +122,7 @@ const DICT_ZH_TO_TH: Record<string, { th: string; pinyin: string; phonetics: str
   "非常感谢": { th: "ขอบคุณมากๆ ครับ", pinyin: "fēicháng gǎnxiè", phonetics: "เฟย-ฉาง-ก่าน-เซี่ย" },
   "你好": { th: "สวัสดีครับ", pinyin: "nǐ hǎo", phonetics: "หนี-ห่าว" },
   "您好": { th: "สวัสดีครับ", pinyin: "nín hǎo", phonetics: "หนิน-ห่าว" },
+  "你好吗": { th: "สบายดีไหมครับ", pinyin: "nǐ hǎo ma", phonetics: "หนี-ห่าว-มา" },
   "多少钱": { th: "ราคาเท่าไหร่ครับ", pinyin: "duōshao qián", phonetics: "ตัว-เส่า-เฉียน" },
   "这个多少钱": { th: "อันนี้ราคาเท่าไหร่ครับ", pinyin: "zhège duōshao qián", phonetics: "เจ้อ-เกอะ-ตัว-เส่า-เฉียน" },
   "可以便宜一点吗": { th: "ลดหน่อยได้ไหมครับ", pinyin: "kěyǐ piányi yīdiǎn ma", phonetics: "เข่อ-อี่-เผียน-อี-อี-เตี่ยน-มา" },
@@ -109,12 +135,19 @@ const DICT_ZH_TO_TH: Record<string, { th: string; pinyin: string; phonetics: str
   "微辣": { th: "ขอเผ็ดนิดเดียวครับ", pinyin: "wēi là", phonetics: "เวย-ล่า" },
   "在哪里": { th: "อยู่ที่ไหนครับ", pinyin: "zài nǎlǐ", phonetics: "ไจ้-หนา-หลี่" },
   "洗手间在哪里": { th: "ห้องน้ำอยู่ที่ไหนครับ", pinyin: "xǐshǒujiān zài nǎlǐ", phonetics: "สี่-โส่ว-เจียน-ไจ้-หนา-หลี่" },
+  "酒店在哪里": { th: "โรงแรมอยู่ที่ไหนครับ", pinyin: "jiǔdiàn zài nǎlǐ", phonetics: "จิ่ว-เตี้ยน-ไจ้-หนา-หลี่" },
+  "去哪里": { th: "จะไปไหนครับ", pinyin: "qù nǎlǐ", phonetics: "ชวี่-หนา-หลี่" },
   "对不起": { th: "ขอโทษครับ", pinyin: "duìbuqǐ", phonetics: "ตุ้ย-ปู้-ฉี่" },
   "没关系": { th: "ไม่เป็นไรครับ", pinyin: "méi guānxi", phonetics: "เหมย-กวาน-ซี" },
   "再见": { th: "ลาก่อนครับ / พบกันใหม่", pinyin: "zàijiàn", phonetics: "ไจ้-เจี้ยน" },
   "好的": { th: "โอเคครับ / ได้ครับ", pinyin: "hǎo de", phonetics: "ห่าว-เตอะ" },
   "可以": { th: "ได้ครับ", pinyin: "kěyǐ", phonetics: "เข่อ-อี่" },
   "不行": { th: "ไม่ได้ครับ", pinyin: "bù xíng", phonetics: "ปู้-สิง" },
+  "明白了": { th: "เข้าใจแล้วครับ", pinyin: "míngbai le", phonetics: "หมิง-ไป๋-เลอ" },
+  "不客气": { th: "ยินดีครับ / ไม่ต้องเกรงใจ", pinyin: "bù kèqi", phonetics: "ปู้-เค่อ-ชี่" },
+  "请等一下": { th: "กรุณารอสักครู่ครับ", pinyin: "qǐng děng yíxià", phonetics: "ฉิ่ง-เติ่ง-อี๋-เซี่ย" },
+  "这是什么": { th: "นี่คืออะไรครับ", pinyin: "zhè shì shénme", phonetics: "เจ้อ-ซื่อ-เสิน-เมอะ" },
+  "欢迎": { th: "ยินดีต้อนรับครับ", pinyin: "huānyíng", phonetics: "ฮวาน-หยิง" },
 };
 
 function lookupDictionary(text: string, targetLang: string) {
@@ -263,30 +296,31 @@ Output JSON matching schema:
     }
   });
 
-  // Direct Audio transcription & translation endpoint
-  app.post("/api/transcribe-translate", async (req, res) => {
+  // Direct Audio transcription & translation endpoint with auto bilingual detection (Thai ⇄ Chinese)
+  const handleTranscribeTranslate = async (req: express.Request, res: express.Response) => {
     try {
-      const { audioBase64, mimeType = "audio/webm", sourceLang = "auto", targetLang = "zh" } = req.body;
+      const { audioBase64, mimeType = "audio/webm", sourceLang = "auto", targetLang = "auto" } = req.body;
       if (!audioBase64) {
         return res.status(400).json({ error: "audioBase64 is required" });
       }
 
       const ai = getGenAI();
-      const targetLangName = targetLang === "zh" ? "Simplified Chinese (中文)" : "Thai (ภาษาไทย)";
 
       const audioPart = {
         inlineData: {
-          mimeType: mimeType.split(";")[0], // e.g. audio/webm, audio/wav
+          mimeType: mimeType.split(";")[0], // e.g. audio/webm, audio/wav, audio/mp4
           data: audioBase64,
         },
       };
 
-      const prompt = `This is a recorded voice message between a Thai speaker and a Chinese speaker.
-1. Accurately transcribe what the speaker said in their native language (Thai or Chinese).
-2. Translate the speech into ${targetLangName}.
-3. Provide Pinyin (if Chinese is involved) and helpful pronunciation guidance.
-Source language hint: ${sourceLang}.
-Return JSON only matching the schema.`;
+      const prompt = `Listen to audio. Speaker speaks Thai or Chinese.
+1. 'originalText': transcribe spoken words in Thai script or Simplified Chinese script. If silence/noise, return empty string "".
+2. 'detectedLang': 'th' or 'zh'.
+3. 'targetLang': opposite language ('zh' or 'th').
+4. 'translatedText': natural conversational translation into opposite language.
+5. 'pinyin': pinyin with tone marks for Chinese.
+6. 'phoneticsForReader': if translated to Chinese, provide Thai phonetic syllables (e.g. 'หนี-ห่าว').
+Output strict JSON.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3.1-flash-lite",
@@ -297,20 +331,19 @@ Return JSON only matching the schema.`;
           ],
         },
         config: {
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.MINIMAL,
-          },
-          temperature: 0.1,
+          temperature: 0.0,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               originalText: { type: Type.STRING, description: "Transcribed speech in spoken language" },
-              translatedText: { type: Type.STRING, description: "Translation into target language" },
               detectedLang: { type: Type.STRING, description: "th or zh" },
-              pinyin: { type: Type.STRING, description: "Pinyin with tones if Chinese" },
+              targetLang: { type: Type.STRING, description: "zh or th" },
+              translatedText: { type: Type.STRING, description: "Natural translation into opposite language" },
+              pinyin: { type: Type.STRING, description: "Pinyin with tones" },
+              phoneticsForReader: { type: Type.STRING, description: "Phonetic reading helper" },
             },
-            required: ["originalText", "translatedText", "detectedLang"],
+            required: ["originalText", "detectedLang", "translatedText"],
           },
         },
       });
@@ -318,31 +351,43 @@ Return JSON only matching the schema.`;
       const responseText = response.text?.trim() || "{}";
       const result = JSON.parse(responseText);
 
-      // Check dictionary if needed
-      if (result.originalText) {
-        const dictHit = lookupDictionary(result.originalText, targetLang);
-        if (dictHit) {
-          result.translatedText = dictHit.translatedText;
-          result.pinyin = dictHit.pinyin || result.pinyin;
-          result.phoneticsForReader = dictHit.phoneticsForReader || result.phoneticsForReader;
-        }
+      // Verify if speech was empty or silence
+      if (!result.originalText || !result.originalText.trim()) {
+        return res.json({
+          success: true,
+          isEmpty: true,
+          originalText: "",
+          translatedText: "",
+          detectedLang: "th",
+        });
       }
+
+      // Check dictionary for phrase refinements
+      const detected = result.detectedLang === "zh" ? "zh" : "th";
+      const oppositeTarget = detected === "th" ? "zh" : "th";
+      const dictHit = lookupDictionary(result.originalText, oppositeTarget);
+      if (dictHit) {
+        result.translatedText = dictHit.translatedText;
+        result.pinyin = dictHit.pinyin || result.pinyin;
+        result.phoneticsForReader = dictHit.phoneticsForReader || result.phoneticsForReader;
+      }
+
+      result.targetLang = oppositeTarget;
 
       return res.json({ success: true, ...result });
     } catch (err: any) {
-      console.error("Transcribe-translate error:", err);
+      console.warn("Transcribe-translate error:", err?.message || err);
+      // Do NOT return fake mock data. Return failure so client discards non-speech or reports issue gracefully.
       return res.json({
-        success: true,
-        originalText: req.body?.sourceLang === "th" ? "(เสียงภาษาไทย)" : "(中文语音)",
-        translatedText: req.body?.targetLang === "zh" ? "你好" : "สวัสดีครับ",
-        detectedLang: req.body?.sourceLang || "th",
-        pinyin: "",
-        phoneticsForReader: "",
-        sentimentOrTone: "ปกติ",
-        warning: err?.message,
+        success: false,
+        error: err?.message || "Audio transcription unavailable",
+        isEmpty: true,
       });
     }
-  });
+  };
+
+  app.post("/api/transcribe-translate", handleTranscribeTranslate);
+  app.post("/api/voice-translate", handleTranscribeTranslate);
 
   // AI Meeting / Conversation Summary Endpoint using Gemini
   app.post("/api/summarize", async (req, res) => {

@@ -1,15 +1,17 @@
-import { Settings } from 'lucide-react';
+import { Settings, QrCode } from 'lucide-react';
 import { RobotIcon } from './RobotIcon';
 
 interface VoiceHeaderProps {
   onOpenSettings: () => void;
   onOpenSummary: () => void;
+  onOpenShare?: () => void;
   historyCount: number;
 }
 
 export function VoiceHeader({
   onOpenSettings,
   onOpenSummary,
+  onOpenShare,
   historyCount,
 }: VoiceHeaderProps) {
   return (
@@ -39,15 +41,27 @@ export function VoiceHeader({
         <span className="text-[10px] text-slate-400 font-medium">ไทย ⇄ 中文</span>
       </div>
 
-      {/* Right Settings Button (Blue gear icon) */}
-      <button
-        type="button"
-        onClick={onOpenSettings}
-        className="p-2 rounded-xl text-blue-600 hover:bg-blue-50 transition"
-        title="ตั้งค่า"
-      >
-        <Settings className="w-5 h-5 text-blue-600" />
-      </button>
+      {/* Right Action Buttons */}
+      <div className="flex items-center gap-1">
+        {onOpenShare && (
+          <button
+            type="button"
+            onClick={onOpenShare}
+            className="p-2 rounded-xl text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition"
+            title="แชร์ QR Code ให้เพื่อน"
+          >
+            <QrCode className="w-5 h-5" />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          className="p-2 rounded-xl text-blue-600 hover:bg-blue-50 transition"
+          title="ตั้งค่า"
+        >
+          <Settings className="w-5 h-5 text-blue-600" />
+        </button>
+      </div>
     </header>
   );
 }

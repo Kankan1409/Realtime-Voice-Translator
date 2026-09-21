@@ -7,6 +7,7 @@ import {
   Calendar,
   MessageSquare,
   ChevronRight,
+  FileText,
 } from 'lucide-react';
 import { ConversationTopic } from '../types';
 import { RobotIcon } from './RobotIcon';
@@ -19,6 +20,7 @@ interface HistorySummaryModalProps {
   onSelectTopic: (topicId: string) => void;
   onStartNewTopic: () => void;
   onDeleteTopic: (topicId: string) => void;
+  onOpenOnePageReport?: (topic: ConversationTopic) => void;
 }
 
 export function HistorySummaryModal({
@@ -29,6 +31,7 @@ export function HistorySummaryModal({
   onSelectTopic,
   onStartNewTopic,
   onDeleteTopic,
+  onOpenOnePageReport,
 }: HistorySummaryModalProps) {
   if (!isOpen) return null;
 
@@ -162,8 +165,21 @@ export function HistorySummaryModal({
                     </div>
                   </div>
 
-                  {/* Right Actions: Delete & Arrow */}
+                  {/* Right Actions: One-Page PDF, Delete & Arrow */}
                   <div className="flex items-center gap-1 shrink-0">
+                    {onOpenOnePageReport && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenOnePageReport(topic);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition"
+                        title="ดูรายงาน One-Page และพิมพ์/บันทึกเป็น PDF"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={(e) => {

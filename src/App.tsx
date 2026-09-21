@@ -6,12 +6,17 @@ import { SettingsModal } from './components/SettingsModal';
 import { CameraTranslateModal } from './components/CameraTranslateModal';
 import { TextTranslateModal } from './components/TextTranslateModal';
 import { HistorySummaryModal } from './components/HistorySummaryModal';
+import { AISummaryResultModal } from './components/AISummaryResultModal';
+import { OnePageReportModal } from './components/OnePageReportModal';
+import { ShareModal } from './components/ShareModal';
 import { TranslationRecord, Language, ConversationTopic } from './types';
 import {
   SpeechRecognitionSession,
   isSpeechRecognitionSupported,
   speakText,
   AudioRecorder,
+  ContinuousAutoInterpreter,
+  ContinuousConversationManager,
 } from './utils/audio';
 
 const TOPICS_STORAGE_KEY = 'voicetrans_topics_v3';
@@ -52,6 +57,10 @@ export default function App() {
     return topics[0]?.id || 'topic-init';
   });
 
+  // Ref always holding the latest topic ID for real-time speech and recording callbacks
+  const currentTopicIdRef = useRef<string>(currentTopicId);
+  currentTopicIdRef.current = currentTopicId;
+
   // Current active topic
   const currentTopic = topics.find((t) => t.id === currentTopicId) || topics[0] || createNewTopic('เรื่องใหม่');
   const records = currentTopic.records || [];
@@ -64,13 +73,28 @@ export default function App() {
   const [fontSize, setFontSize] = useState<'normal' | 'large' | 'huge'>('large');
   const [isSummarizing, setIsSummarizing] = useState(false);
 
+  // Continuous Hands-Free Auto Interpreter State
+  const autoInterpreterRef = useRef<ContinuousConversationManager | ContinuousAutoInterpreter | null>(null);
+  const [isAutoListening, setIsAutoListening] = useState(false);
+  const [autoStatus, setAutoStatus] = useState<'idle' | 'listening' | 'speaking' | 'processing'>('idle');
+  const [liveVolume, setLiveVolume] = useState(0);
+  const [isAISummaryModalOpen, setIsAISummaryModalOpen] = useState(false);
+
   // Modals & Navigation
   const [currentTab, setCurrentTab] = useState<BottomNavTab>('voice');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isTextOpen, setIsTextOpen] = useState(false);
   const [isHistorySummaryOpen, setIsHistorySummaryOpen] = useState(false);
+  const [isOnePageModalOpen, setIsOnePageModalOpen] = useState(false);
+  const [onePageTopic, setOnePageTopic] = useState<ConversationTopic | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const handleOpenOnePageReport = (topic?: ConversationTopic) => {
+    setOnePageTopic(topic || currentTopic);
+    setIsOnePageModalOpen(true);
+  };
 
   const speechSessionRef = useRef<SpeechRecognitionSession | null>(null);
   const audioRecorderRef = useRef<AudioRecorder | null>(null);
@@ -100,6 +124,7 @@ export default function App() {
   useEffect(() => {
     return () => {
       speechSessionRef.current?.stop();
+      autoInterpreterRef.current?.stop();
     };
   }, []);
 
@@ -136,12 +161,20 @@ export default function App() {
 
   // Start a new topic/channel (user explicitly starts talking about something else)
   const handleStartNewTopic = () => {
-    // If current topic has records, trigger summary for it
-    if (records.length > 0 && currentTopic.title === 'เรื่องใหม่') {
-      summarizeTopicInBackground(currentTopic.id, records);
+    // 1. Cleanly stop any active recording/listening session
+    stopAutoListening();
+    handleStopListening();
+
+    // 2. If current topic has records, trigger summary for it
+    const activeId = currentTopicIdRef.current;
+    const activeTopicObj = topics.find((t) => t.id === activeId);
+    if (activeTopicObj && activeTopicObj.records.length > 0 && activeTopicObj.title === 'เรื่องใหม่') {
+      summarizeTopicInBackground(activeId, activeTopicObj.records);
     }
 
+    // 3. Create fresh topic and immediately update ref & state
     const freshTopic = createNewTopic('เรื่องใหม่');
+    currentTopicIdRef.current = freshTopic.id;
     setTopics((prev) => [freshTopic, ...prev]);
     setCurrentTopicId(freshTopic.id);
     showToast('✨ เปิดช่องคุยเรื่องใหม่เรียบร้อยแล้ว');
@@ -149,8 +182,11 @@ export default function App() {
 
   // Select an existing topic from archive
   const handleSelectTopic = (topicId: string) => {
+    stopAutoListening();
+    handleStopListening();
     const target = topics.find((t) => t.id === topicId);
     if (target) {
+      currentTopicIdRef.current = topicId;
       setCurrentTopicId(topicId);
       showToast(`เปิดเรื่อง: ${target.title}`);
     }
@@ -162,10 +198,12 @@ export default function App() {
       const filtered = prev.filter((t) => t.id !== topicId);
       if (filtered.length === 0) {
         const fresh = createNewTopic('เรื่องใหม่');
+        currentTopicIdRef.current = fresh.id;
         setCurrentTopicId(fresh.id);
         return [fresh];
       }
-      if (currentTopicId === topicId) {
+      if (currentTopicIdRef.current === topicId) {
+        currentTopicIdRef.current = filtered[0].id;
         setCurrentTopicId(filtered[0].id);
       }
       return filtered;
@@ -175,7 +213,11 @@ export default function App() {
 
   // Summarize current topic directly from the chat screen
   const handleSummarizeCurrentTopic = async () => {
-    if (records.length === 0) {
+    const targetId = currentTopicIdRef.current;
+    const targetTopicObj = topics.find((t) => t.id === targetId);
+    const targetRecords = targetTopicObj?.records || [];
+
+    if (targetRecords.length === 0) {
       showToast('ยังไม่มีบทสนทนาในเรื่องนี้ให้สรุป');
       return;
     }
@@ -187,13 +229,13 @@ export default function App() {
       const res = await fetch('/api/summarize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ history: records }),
+        body: JSON.stringify({ history: targetRecords }),
       });
       const data = await res.json();
       if (data.success && data.data) {
         setTopics((prev) =>
           prev.map((t) => {
-            if (t.id === currentTopicId) {
+            if (t.id === targetId) {
               return {
                 ...t,
                 title: data.data.topicTitle || t.title,
@@ -217,11 +259,27 @@ export default function App() {
     }
   };
 
-  // Add new translation record to current topic
-  const addRecordToCurrentTopic = (newRecord: TranslationRecord) => {
-    setTopics((prev) =>
-      prev.map((t) => {
-        if (t.id === currentTopicId) {
+  // Add new translation record to current topic (using ref to ensure target topic is always freshest)
+  const addRecordToCurrentTopic = useCallback((newRecord: TranslationRecord, explicitTopicId?: string) => {
+    const targetId = explicitTopicId || currentTopicIdRef.current;
+    setTopics((prev) => {
+      const exists = prev.some((t) => t.id === targetId);
+      if (!exists) {
+        const fresh: ConversationTopic = {
+          id: targetId,
+          title:
+            newRecord.originalText.length > 25
+              ? newRecord.originalText.substring(0, 25) + '...'
+              : newRecord.originalText,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          records: [newRecord],
+        };
+        return [fresh, ...prev];
+      }
+
+      return prev.map((t) => {
+        if (t.id === targetId) {
           const updatedRecords = [...t.records, newRecord];
           let updatedTitle = t.title;
 
@@ -241,17 +299,20 @@ export default function App() {
           };
         }
         return t;
-      })
-    );
+      });
+    });
 
     // If accumulated 2 or more records, auto-summarize topic title in background
-    const newCount = records.length + 1;
-    if (newCount === 2 || newCount % 5 === 0) {
-      setTimeout(() => {
-        summarizeTopicInBackground(currentTopicId, [...records, newRecord]);
-      }, 1200);
-    }
-  };
+    setTimeout(() => {
+      setTopics((latestTopics) => {
+        const target = latestTopics.find((t) => t.id === targetId);
+        if (target && (target.records.length === 2 || target.records.length % 5 === 0)) {
+          summarizeTopicInBackground(targetId, target.records);
+        }
+        return latestTopics;
+      });
+    }, 1200);
+  }, []);
 
   const clientCache = useRef<Map<string, any>>(new Map());
 
@@ -318,7 +379,7 @@ export default function App() {
         showToast('เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง');
       }
     },
-    [autoSpeak, currentTopicId, records]
+    [autoSpeak, addRecordToCurrentTopic]
   );
 
   // Stop listening
@@ -465,8 +526,107 @@ export default function App() {
     }
   };
 
+  // Stop continuous hands-free auto-interpreter
+  const stopAutoListening = useCallback(() => {
+    if (autoInterpreterRef.current) {
+      autoInterpreterRef.current.stop();
+      autoInterpreterRef.current = null;
+    }
+    setIsAutoListening(false);
+    setAutoStatus('idle');
+    setLiveVolume(0);
+    setInterimTranscript('');
+  }, []);
+
+  // Switch active speaker during continuous conversation
+  const handleSwitchAutoSpeaker = useCallback((lang: Language) => {
+    setActiveSpeaker(lang);
+    if (autoInterpreterRef.current && 'switchSpeaker' in autoInterpreterRef.current) {
+      autoInterpreterRef.current.switchSpeaker(lang);
+    }
+  }, []);
+
+  // Start continuous hands-free auto-interpreter (Thai ⇄ Chinese dual auto-detect & auto-alternating)
+  const startAutoListening = useCallback(async () => {
+    // Stop any manual listening first
+    handleStopListening();
+    if (autoInterpreterRef.current) {
+      autoInterpreterRef.current.stop();
+      autoInterpreterRef.current = null;
+    }
+
+    const initialSpeaker: Language = activeSpeaker || 'th';
+    setActiveSpeaker(initialSpeaker);
+    setInterimTranscript('');
+
+    const manager = new ContinuousConversationManager(
+      {
+        onStatusChange: (status) => {
+          setAutoStatus(status);
+        },
+        onInterimText: (text) => {
+          setInterimTranscript(text);
+        },
+        onSpeakerChange: (spk) => {
+          setActiveSpeaker(spk);
+        },
+        onVolumeChange: (vol) => {
+          setLiveVolume(vol);
+        },
+        onTranslation: (data) => {
+          const newRecord: TranslationRecord = {
+            id: 'auto-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+            timestamp: Date.now(),
+            speaker: data.detectedLang,
+            originalText: data.originalText,
+            translatedText: data.translatedText,
+            pinyin: data.pinyin,
+            phoneticsForReader: data.phoneticsForReader,
+          };
+          addRecordToCurrentTopic(newRecord);
+
+          if (autoSpeak) {
+            manager.onTTSSpeakStart();
+            speakText(
+              data.translatedText,
+              data.targetLang,
+              1.05,
+              () => manager.onTTSSpeakStart(),
+              () => manager.onTTSSpeakEnd()
+            );
+          }
+        },
+        onError: (errMsg) => {
+          console.warn('Continuous conversation note:', errMsg);
+        },
+      },
+      initialSpeaker
+    );
+
+    autoInterpreterRef.current = manager;
+    const ok = await manager.start();
+    if (ok) {
+      setIsAutoListening(true);
+      showToast('🎙️ เริ่มคุยอัตโนมัติแล้ว สลับฝ่ายพูดให้อัตโนมัติ');
+    } else {
+      setIsAutoListening(false);
+      setAutoStatus('idle');
+    }
+  }, [activeSpeaker, autoSpeak, handleStopListening, addRecordToCurrentTopic]);
+
+  // Stop auto listening & immediately trigger AI Summary modal as requested
+  const handleStopAndSummarize = useCallback(async () => {
+    stopAutoListening();
+    handleStopListening();
+    setIsAISummaryModalOpen(true);
+    await handleSummarizeCurrentTopic();
+  }, [stopAutoListening, handleStopListening, handleSummarizeCurrentTopic]);
+
   const handleClearHistory = () => {
+    stopAutoListening();
+    handleStopListening();
     const fresh = createNewTopic('เรื่องใหม่');
+    currentTopicIdRef.current = fresh.id;
     setTopics([fresh]);
     setCurrentTopicId(fresh.id);
     showToast('ล้างประวัติหัวข้อทั้งหมดเรียบร้อยแล้ว');
@@ -490,6 +650,7 @@ export default function App() {
       <VoiceHeader
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenSummary={() => setIsHistorySummaryOpen(true)}
+        onOpenShare={() => setIsShareOpen(true)}
         historyCount={topics.length}
       />
 
@@ -510,12 +671,23 @@ export default function App() {
           showPinyin={showPinyin}
           fontSize={fontSize}
           topicTitle={currentTopic.title}
-          onStartNewTopic={handleStartNewTopic}
+          onStartNewTopic={() => {
+            stopAutoListening();
+            handleStartNewTopic();
+          }}
           onOpenTopicHistory={() => setIsHistorySummaryOpen(true)}
           onSummarize={handleSummarizeCurrentTopic}
           isSummarizing={isSummarizing}
           summaryOverview={currentTopic.overview}
           summaryData={currentTopic.summaryData}
+          isAutoListening={isAutoListening}
+          autoStatus={autoStatus}
+          liveVolume={liveVolume}
+          onStartAutoListen={startAutoListening}
+          onStopAndSummarize={handleStopAndSummarize}
+          onOpenFullSummaryModal={() => setIsAISummaryModalOpen(true)}
+          onSwitchAutoSpeaker={handleSwitchAutoSpeaker}
+          onOpenOnePageReport={() => handleOpenOnePageReport(currentTopic)}
         />
       </main>
 
@@ -579,9 +751,50 @@ export default function App() {
         }}
         topics={topics}
         currentTopicId={currentTopicId}
-        onSelectTopic={handleSelectTopic}
-        onStartNewTopic={handleStartNewTopic}
+        onSelectTopic={(id) => {
+          stopAutoListening();
+          handleSelectTopic(id);
+        }}
+        onStartNewTopic={() => {
+          stopAutoListening();
+          handleStartNewTopic();
+        }}
         onDeleteTopic={handleDeleteTopic}
+        onOpenOnePageReport={(t) => handleOpenOnePageReport(t)}
+      />
+
+      {/* 5. Comprehensive AI Summary Report Modal */}
+      <AISummaryResultModal
+        isOpen={isAISummaryModalOpen}
+        onClose={() => setIsAISummaryModalOpen(false)}
+        topicTitle={currentTopic.title}
+        summaryData={currentTopic.summaryData}
+        overview={currentTopic.overview}
+        records={records}
+        onStartNewTopic={() => {
+          stopAutoListening();
+          handleStartNewTopic();
+          setIsAISummaryModalOpen(false);
+        }}
+        isLoading={isSummarizing}
+        onOpenOnePageReport={() => handleOpenOnePageReport(currentTopic)}
+      />
+
+      {/* 6. One-Page Executive Report & PDF Export Modal */}
+      <OnePageReportModal
+        isOpen={isOnePageModalOpen}
+        onClose={() => setIsOnePageModalOpen(false)}
+        topicTitle={onePageTopic?.title || currentTopic.title}
+        summaryData={onePageTopic?.summaryData || currentTopic.summaryData}
+        overview={onePageTopic?.overview || currentTopic.overview}
+        records={onePageTopic?.records || records}
+        createdAt={onePageTopic?.createdAt || currentTopic.createdAt}
+      />
+
+      {/* 7. Quick Share / QR Code Modal */}
+      <ShareModal
+        isOpen={isShareOpen}
+        onClose={() => setIsShareOpen(false)}
       />
 
       {/* Toast Notification */}

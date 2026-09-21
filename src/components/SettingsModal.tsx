@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Settings, Volume2, Sparkles, X, Check, QrCode, Smartphone, Copy, ExternalLink } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { getPublicShareUrl } from '../utils/url';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -29,10 +30,7 @@ export function SettingsModal({
 
   if (!isOpen) return null;
 
-  const currentUrl =
-    typeof window !== 'undefined' && window.location.href && !window.location.href.startsWith('about:')
-      ? window.location.href
-      : 'https://ais-pre-tamqoxxdji5mevf3dukz75-911647309951.asia-east1.run.app';
+  const currentUrl = getPublicShareUrl();
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(currentUrl);
