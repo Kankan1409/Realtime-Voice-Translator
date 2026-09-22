@@ -396,11 +396,37 @@ Output JSON matching schema:
         },
       };
 
+      let langGuidance = "";
+      if (sourceLang === "th") {
+        langGuidance = `The speaker is speaking Thai (ภาษาไทย). You MUST transcribe the spoken audio into Thai script (ภาษาไทย). Do NOT transcribe into Chinese characters or Pinyin. Translate into fluent Chinese (targetLang: 'zh').`;
+      } else if (sourceLang === "zh") {
+        langGuidance = `The speaker is speaking Chinese (中文). You MUST transcribe into Chinese characters. Translate into fluent Thai (targetLang: 'th').`;
+      } else {
+        langGuidance = `Determine whether the speaker is speaking Thai or Chinese directly from the audio:
+CRITICAL BILINGUAL DETECTION RULES:
+1. If the speaker spoke Thai (even short words, greetings like สวัสดี, ครับ, ค่ะ, ใช่, ไม่, เท่าไหร่, กินข้าว, ตัวเลข, หรือภาษาไทยใดๆ):
+   - You MUST transcribe the spoken words in Thai script (ภาษาไทย) into 'originalText'.
+   - NEVER transcribe Thai speech into Chinese characters or Pinyin (e.g. NEVER output 刷我的卡 or 你好 for Thai speech)!
+   - Set 'detectedLang': 'th', and 'targetLang': 'zh'.
+   - Translate into fluent natural Simplified Chinese (中文) into 'translatedText'.
+   - Provide standard Pinyin with tone marks in 'pinyin'.
+   - Provide Thai phonetics syllables in 'phoneticsForReader'.
+2. If the speaker spoke Mandarin Chinese (中文):
+   - You MUST transcribe the spoken words in Simplified Chinese characters (中文) into 'originalText'.
+   - Set 'detectedLang': 'zh', and 'targetLang': 'th'.
+   - Translate into fluent natural Thai script (ภาษาไทย) into 'translatedText'.
+   - Set 'pinyin': "", 'phoneticsForReader': "".
+3. If the audio is complete silence or ambient background noise without speech:
+   - Set 'isEmpty': true.`;
+      }
+
       const prompt = `You are an ultra-fast real-time bilingual interpreter between Thai and Chinese.
 Transcribe and translate all spoken words immediately. Capture every voice, whisper, quiet speech, short phrase, or conversational sound without hesitation.
+${langGuidance}
+
 If and only if the audio is completely dead silent with zero sound, return isEmpty: true.
 Otherwise, return:
-1. 'originalText': accurate transcription of spoken words (Thai script or Simplified Chinese characters).
+1. 'originalText': accurate transcription of spoken words (Thai script if Thai, or Simplified Chinese characters if Chinese).
 2. 'detectedLang': 'th' or 'zh'.
 3. 'targetLang': opposite language ('zh' if spoken Thai, or 'th' if spoken Chinese).
 4. 'translatedText': natural fluent conversational translation into targetLang.
@@ -447,17 +473,25 @@ Output strict JSON.`;
           isEmpty: true,
           originalText: "",
           translatedText: "",
-          detectedLang: "th",
+          detectedLang: sourceLang === "zh" ? "zh" : "th",
         });
       }
 
-      // Automatic character set validation to ensure 100% accurate language detection
-      if (/[\u0E00-\u0E7F]/.test(result.originalText)) {
+      // Enforce correct language tagging according to explicit sourceLang or character validation
+      if (sourceLang === "th") {
         result.detectedLang = "th";
         result.targetLang = "zh";
-      } else if (/[\u4E00-\u9FFF]/.test(result.originalText)) {
+      } else if (sourceLang === "zh") {
         result.detectedLang = "zh";
         result.targetLang = "th";
+      } else {
+        if (/[\u0E00-\u0E7F]/.test(result.originalText)) {
+          result.detectedLang = "th";
+          result.targetLang = "zh";
+        } else if (/[\u4E00-\u9FFF]/.test(result.originalText)) {
+          result.detectedLang = "zh";
+          result.targetLang = "th";
+        }
       }
 
       // Check dictionary for phrase refinements

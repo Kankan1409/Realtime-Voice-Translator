@@ -355,9 +355,14 @@ export class ContinuousAutoInterpreter {
   private ambientNoiseFloor = 8;
   private calibrationFrames = 0;
   private noiseSensitivity: 'high' | 'medium' | 'low' = 'high';
+  private targetLanguage: 'th' | 'zh' | 'auto' = 'auto';
 
   constructor(callbacks: AutoInterpreterCallbacks) {
     this.callbacks = callbacks;
+  }
+
+  public setTargetLanguage(lang: 'th' | 'zh' | 'auto') {
+    this.targetLanguage = lang;
   }
 
   public setNoiseSensitivity(sensitivity: 'high' | 'medium' | 'low') {
@@ -633,7 +638,7 @@ export class ContinuousAutoInterpreter {
           body: JSON.stringify({
             audioBase64: base64Data,
             mimeType,
-            sourceLang: 'auto',
+            sourceLang: this.targetLanguage,
           }),
           signal: controller.signal,
         });
@@ -737,35 +742,20 @@ export interface ContinuousConversationCallbacks {
 
 /**
  * ContinuousConversationManager
- * High-performance bilingual continuous translation engine:
- * 1. Uses browser neural SpeechRecognition when available (zero background noise pickup, instantaneous word-by-word streaming).
- * 2. Instant AI translation via /api/translate with ThinkingLevel.MINIMAL (<250ms latency).
- * 3. Graceful fallback to vocal-band filtered ContinuousAutoInterpreter.
+ * Ultra-accurate hands-free bilingual live interpreter:
+ * 1. Automatically captures audio chunks via vocal-band Voice Activity Detection (VAD).
+ * 2. Directly detects spoken language from raw audio (Thai or Chinese) using Gemini multimodal intelligence.
+ * 3. If Thai spoken -> translates to Chinese. If Chinese spoken -> translates to Thai.
+ * 4. Zero manual sides or language lock needed.
  */
 export class ContinuousConversationManager {
   private isRunning = false;
   private isPausedForTTS = false;
-  private activeSpeaker: 'th' | 'zh' = 'th';
   private interpreter: ContinuousAutoInterpreter | null = null;
-  private recognitionSession: SpeechRecognitionSession | null = null;
   private callbacks: ContinuousConversationCallbacks;
-  private isTranslating = false;
-  private restartTimer: any = null;
-  private consecutiveErrors = 0;
 
-  public autoAlternate: boolean = false;
-
-  constructor(callbacks: ContinuousConversationCallbacks, initialSpeaker: 'th' | 'zh' = 'th') {
+  constructor(callbacks: ContinuousConversationCallbacks) {
     this.callbacks = callbacks;
-    this.activeSpeaker = initialSpeaker;
-  }
-
-  public setAutoAlternate(enabled: boolean) {
-    this.autoAlternate = enabled;
-  }
-
-  public getSpeaker(): 'th' | 'zh' {
-    return this.activeSpeaker;
   }
 
   public getIsRunning(): boolean {
@@ -776,156 +766,29 @@ export class ContinuousConversationManager {
     this.stop();
     this.isRunning = true;
     this.isPausedForTTS = false;
-    this.isTranslating = false;
-    this.consecutiveErrors = 0;
 
-    // If SpeechRecognition is supported (Chrome, Edge, Safari iOS 14.5+, Android Chrome),
-    // use it for zero-latency on-device transcription with no API key requirement for STT.
-    if (isSpeechRecognitionSupported()) {
-      return this.startSpeechRecognitionLoop();
-    } else {
-      return this.startAutoInterpreterFallback();
-    }
-  }
-
-  private startSpeechRecognitionLoop(): boolean {
-    if (!this.isRunning || this.isPausedForTTS) return false;
-
-    this.recognitionSession = new SpeechRecognitionSession();
-    this.callbacks.onStatusChange('listening');
-
-    this.recognitionSession.start(
-      this.activeSpeaker,
-      async (text: string, isFinal: boolean) => {
-        if (!this.isRunning) return;
-
-        if (!isFinal) {
-          this.callbacks.onStatusChange('speaking');
-          this.callbacks.onInterimText(text);
-          return;
-        }
-
-        // Final spoken sentence received
-        const cleanText = text.trim();
-        if (!cleanText || this.isTranslating) return;
-
-        this.isTranslating = true;
-        this.callbacks.onStatusChange('processing');
-        this.callbacks.onInterimText(cleanText);
-
-        try {
-          // Automatically detect language based on actual characters spoken
-          let detectedLang: 'th' | 'zh' = this.activeSpeaker;
-          let targetLang: 'th' | 'zh' = this.activeSpeaker === 'th' ? 'zh' : 'th';
-
-          if (/[\u0E00-\u0E7F]/.test(cleanText)) {
-            detectedLang = 'th';
-            targetLang = 'zh';
-          } else if (/[\u4E00-\u9FFF]/.test(cleanText)) {
-            detectedLang = 'zh';
-            targetLang = 'th';
-          }
-
-          // Alternate active speaker only if autoAlternate mode is enabled
-          if (this.autoAlternate) {
-            this.activeSpeaker = targetLang;
-            this.callbacks.onSpeakerChange(targetLang);
-          }
-
-          // Fast translation API call (<250ms)
-          const resp = await fetch('/api/translate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text: cleanText,
-              sourceLang: detectedLang,
-              targetLang: targetLang,
-            }),
-          });
-
-          const data = await resp.json();
-          if (data.success && data.translatedText) {
-            this.callbacks.onTranslation({
-              originalText: cleanText,
-              translatedText: data.translatedText,
-              detectedLang,
-              targetLang,
-              pinyin: data.pinyin,
-              phoneticsForReader: data.phoneticsForReader,
-            });
-          }
-        } catch (err: any) {
-          console.warn('Speech translation error:', err);
-        } finally {
-          this.isTranslating = false;
-          this.callbacks.onInterimText('');
-          this.consecutiveErrors = 0;
-          // If not paused for TTS, schedule quick restart
-          if (this.isRunning && !this.isPausedForTTS) {
-            this.scheduleRecognitionRestart(60);
-          }
-        }
-      },
-      (error) => {
-        if (!this.isRunning || this.isPausedForTTS) return;
-
-        // Normal pause between conversation turns is NOT an error
-        if (error === 'no-speech') {
-          this.scheduleRecognitionRestart(100);
-          return;
-        }
-
-        this.consecutiveErrors++;
-        console.warn('Continuous speech recognition warning:', error, 'count:', this.consecutiveErrors);
-
-        if (this.consecutiveErrors >= 5) {
-          console.info('Switching to ContinuousAutoInterpreter fallback after repeated speech recognition errors');
-          this.recognitionSession?.stop();
-          this.recognitionSession = null;
-          this.startAutoInterpreterFallback();
-          return;
-        }
-
-        // Restart after transient error
-        this.scheduleRecognitionRestart(300);
-      },
-      () => {
-        // Recognition cycle ended
-        if (this.isRunning && !this.isPausedForTTS && !this.isTranslating) {
-          this.scheduleRecognitionRestart(50);
-        }
-      }
-    );
-
-    return true;
-  }
-
-  private scheduleRecognitionRestart(delayMs = 60) {
-    if (this.restartTimer) clearTimeout(this.restartTimer);
-    if (!this.isRunning || this.isPausedForTTS) return;
-
-    this.restartTimer = setTimeout(() => {
-      if (this.isRunning && !this.isPausedForTTS && !this.isTranslating) {
-        this.startSpeechRecognitionLoop();
-      }
-    }, delayMs);
-  }
-
-  private async startAutoInterpreterFallback(): Promise<boolean> {
     this.interpreter = new ContinuousAutoInterpreter({
-      onStatusChange: (status) => this.callbacks.onStatusChange(status),
-      onVolumeChange: (vol) => this.callbacks.onVolumeChange(vol),
+      onStatusChange: (status) => {
+        if (!this.isRunning) return;
+        this.callbacks.onStatusChange(status);
+      },
+      onVolumeChange: (vol) => {
+        if (!this.isRunning) return;
+        this.callbacks.onVolumeChange(vol);
+      },
       onTranslation: (data) => {
-        this.activeSpeaker = data.detectedLang;
+        if (!this.isRunning) return;
         this.callbacks.onSpeakerChange(data.detectedLang);
         this.callbacks.onTranslation(data);
       },
       onError: (err) => {
-        console.warn('Auto interpreter fallback error:', err);
+        console.warn('Continuous auto interpreter error:', err);
         this.callbacks.onError(err);
       },
     });
 
+    // Target language is 'auto': Gemini listens to the actual audio and detects Thai or Chinese!
+    this.interpreter.setTargetLanguage('auto');
     const ok = await this.interpreter.start();
     if (!ok) {
       this.isRunning = false;
@@ -939,18 +802,8 @@ export class ContinuousConversationManager {
    */
   public onTTSSpeakStart() {
     this.isPausedForTTS = true;
-
-    if (this.restartTimer) {
-      clearTimeout(this.restartTimer);
-      this.restartTimer = null;
-    }
-
-    if (this.recognitionSession) {
-      this.recognitionSession.stop();
-    }
-
     if (this.interpreter) {
-      this.interpreter.setMutedForTTS(true, 6000);
+      this.interpreter.setMutedForTTS(true, 7000);
     }
   }
 
@@ -960,49 +813,17 @@ export class ContinuousConversationManager {
    */
   public onTTSSpeakEnd() {
     this.isPausedForTTS = false;
-
     if (this.interpreter) {
       this.interpreter.setMutedForTTS(false);
     }
-
-    if (this.isRunning && !this.isTranslating) {
-      if (isSpeechRecognitionSupported()) {
-        this.scheduleRecognitionRestart(100);
-      } else {
-        this.callbacks.onStatusChange('listening');
-      }
-    }
-  }
-
-  /**
-   * Switch speaker language
-   */
-  public switchSpeaker(lang: 'th' | 'zh') {
-    this.activeSpeaker = lang;
-    this.callbacks.onSpeakerChange(lang);
-
-    if (this.isRunning && isSpeechRecognitionSupported() && !this.isPausedForTTS) {
-      if (this.recognitionSession) {
-        this.recognitionSession.stop();
-      }
-      this.scheduleRecognitionRestart(50);
+    if (this.isRunning) {
+      this.callbacks.onStatusChange('listening');
     }
   }
 
   public stop() {
     this.isRunning = false;
     this.isPausedForTTS = false;
-    this.isTranslating = false;
-
-    if (this.restartTimer) {
-      clearTimeout(this.restartTimer);
-      this.restartTimer = null;
-    }
-
-    if (this.recognitionSession) {
-      this.recognitionSession.stop();
-      this.recognitionSession = null;
-    }
 
     if (this.interpreter) {
       this.interpreter.stop();

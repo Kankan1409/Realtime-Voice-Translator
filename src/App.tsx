@@ -632,7 +632,7 @@ export default function App() {
     setInterimTranscript('');
   }, []);
 
-  // Start continuous hands-free auto-interpreter (Thai ⇄ Chinese dual auto-detect)
+  // Start continuous hands-free auto-interpreter (Automatic Thai ⇄ Chinese detection from audio)
   const startAutoListening = useCallback(async () => {
     // Stop any manual listening first
     handleStopListening();
@@ -641,65 +641,61 @@ export default function App() {
       autoInterpreterRef.current = null;
     }
 
-    const initialSpeaker: Language = activeSpeaker || 'th';
-    setActiveSpeaker(initialSpeaker);
+    setActiveSpeaker('th');
     setInterimTranscript('');
 
-    const manager = new ContinuousConversationManager(
-      {
-        onStatusChange: (status) => {
-          setAutoStatus(status);
-        },
-        onInterimText: (text) => {
-          setInterimTranscript(text);
-        },
-        onSpeakerChange: (spk) => {
-          setActiveSpeaker(spk);
-        },
-        onVolumeChange: (vol) => {
-          setLiveVolume(vol);
-        },
-        onTranslation: (data) => {
-          const newRecord: TranslationRecord = {
-            id: 'auto-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-            timestamp: Date.now(),
-            speaker: data.detectedLang,
-            originalText: data.originalText,
-            translatedText: data.translatedText,
-            pinyin: data.pinyin,
-            phoneticsForReader: data.phoneticsForReader,
-          };
-          addRecordToCurrentTopic(newRecord);
-
-          if (autoSpeak) {
-            manager.onTTSSpeakStart();
-            speakText(
-              data.translatedText,
-              data.targetLang,
-              1.05,
-              () => manager.onTTSSpeakStart(),
-              () => manager.onTTSSpeakEnd()
-            );
-          }
-        },
-        onError: (errMsg) => {
-          console.warn('Continuous conversation note:', errMsg);
-        },
+    const manager = new ContinuousConversationManager({
+      onStatusChange: (status) => {
+        setAutoStatus(status);
       },
-      initialSpeaker
-    );
+      onInterimText: (text) => {
+        setInterimTranscript(text);
+      },
+      onSpeakerChange: (spk) => {
+        setActiveSpeaker(spk);
+      },
+      onVolumeChange: (vol) => {
+        setLiveVolume(vol);
+      },
+      onTranslation: (data) => {
+        const newRecord: TranslationRecord = {
+          id: 'auto-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+          timestamp: Date.now(),
+          speaker: data.detectedLang,
+          originalText: data.originalText,
+          translatedText: data.translatedText,
+          pinyin: data.pinyin,
+          phoneticsForReader: data.phoneticsForReader,
+        };
+        addRecordToCurrentTopic(newRecord);
 
-    manager.setAutoAlternate(true);
+        if (autoSpeak) {
+          manager.onTTSSpeakStart();
+          speakText(
+            data.translatedText,
+            data.targetLang,
+            1.05,
+            () => manager.onTTSSpeakStart(),
+            () => manager.onTTSSpeakEnd()
+          );
+        }
+      },
+      onError: (errMsg) => {
+        console.warn('Continuous conversation note:', errMsg);
+      },
+    });
+
     autoInterpreterRef.current = manager;
     const ok = await manager.start();
     if (ok) {
       setIsAutoListening(true);
-      showToast('🎙️ เริ่มจับเสียงสดการประชุมแล้ว แปลไทย-จีน อัตโนมัติ');
+      showToast('🎙️ ไมค์เปิดแล้ว: ตรวจจับเสียงพูดอัตโนมัติ (ไทย ⇄ จีน)');
     } else {
       setIsAutoListening(false);
       setAutoStatus('idle');
+      showToast('ไม่สามารถเปิดไมโครโฟนได้ กรุณาอนุญาตการเข้าถึงไมค์');
     }
-  }, [activeSpeaker, autoSpeak, handleStopListening, addRecordToCurrentTopic]);
+  }, [autoSpeak, handleStopListening, addRecordToCurrentTopic, showToast]);
 
   // Stop auto listening & immediately trigger AI Summary modal as requested
   const handleStopAndSummarize = useCallback(async () => {
