@@ -36,15 +36,21 @@ async function generateWithFallback(params: {
   preferredModels?: string[];
 }) {
   const ai = getGenAI();
-  const models = params.preferredModels || ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3.5-flash", "gemini-3.8-flash"];
+  const models = params.preferredModels || ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"];
   let lastError: any = null;
+
+  // Ultra-low latency default: set thinkingLevel to MINIMAL for real-time translation speed
+  const mergedConfig = {
+    ...params.config,
+    thinkingConfig: params.config?.thinkingConfig || { thinkingLevel: ThinkingLevel.MINIMAL },
+  };
 
   for (const model of models) {
     try {
       const res = await ai.models.generateContent({
         model,
         contents: params.contents,
-        config: params.config,
+        config: mergedConfig,
       });
       return res;
     } catch (err: any) {
@@ -85,7 +91,7 @@ function setCachedTranslation(text: string, targetLang: string, data: any) {
   translationCache.set(key, data);
 }
 
-// Built-in high accuracy dictionary for instant translation and fallback
+// Built-in high accuracy dictionary for instant 0ms translation
 const DICT_TH_TO_ZH: Record<string, { zh: string; pinyin: string; phonetics: string }> = {
   "ขอบคุณ": { zh: "谢谢", pinyin: "xièxie", phonetics: "เซี่ย-เซียะ" },
   "ขอบคุณครับ": { zh: "谢谢", pinyin: "xièxie", phonetics: "เซี่ย-เซียะ" },
@@ -99,6 +105,7 @@ const DICT_TH_TO_ZH: Record<string, { zh: string; pinyin: string; phonetics: str
   "ยินดีที่ได้รู้จัก": { zh: "很高兴认识你", pinyin: "hěn gāoxìng rènshí nǐ", phonetics: "เหิ่น-เกา-ซิ่ง-เยิ่น-สือ-หนี่" },
   "เท่าไหร่": { zh: "多少钱？", pinyin: "duōshao qián?", phonetics: "ตัว-เส่า-เฉียน" },
   "ราคาเท่าไหร่": { zh: "多少钱？", pinyin: "duōshao qián?", phonetics: "ตัว-เส่า-เฉียน" },
+  "กี่บาท": { zh: "多少钱？", pinyin: "duōshao qián?", phonetics: "ตัว-เส่า-เฉียน" },
   "อันนี้เท่าไหร่": { zh: "这个多少钱？", pinyin: "zhège duōshao qián?", phonetics: "เจ้อ-เกอะ-ตัว-เส่า-เฉียน" },
   "ลดราคาได้ไหม": { zh: "可以便宜一点吗？", pinyin: "kěyǐ piányi yīdiǎn ma?", phonetics: "เข่อ-อี่-เผียน-อี-อี-เตี่ยน-มา" },
   "ลดหน่อยได้ไหม": { zh: "可以便宜一点吗？", pinyin: "kěyǐ piányi yīdiǎn ma?", phonetics: "เข่อ-อี่-เผียน-อี-อี-เตี่ยน-มา" },
@@ -109,8 +116,13 @@ const DICT_TH_TO_ZH: Record<string, { zh: string; pinyin: string; phonetics: str
   "อร่อยมาก": { zh: "很好吃", pinyin: "hěn hǎochī", phonetics: "เหิ่น-ห่าว-ชรือ" },
   "ห้องน้ำอยู่ที่ไหน": { zh: "洗手间在哪里？", pinyin: "xǐshǒujiān zài nǎlǐ?", phonetics: "สี่-โส่ว-เจียน-ไจ้-หนา-หลี่" },
   "ใช่": { zh: "是的", pinyin: "shì de", phonetics: "ซื่อ-เตอะ" },
+  "ใช่ครับ": { zh: "是的", pinyin: "shì de", phonetics: "ซื่อ-เตอะ" },
+  "ใช่ค่ะ": { zh: "是的", pinyin: "shì de", phonetics: "ซื่อ-เตอะ" },
   "ไม่ใช่": { zh: "不是", pinyin: "bù shì", phonetics: "ปู้-ซื่อ" },
   "ได้": { zh: "可以", pinyin: "kěyǐ", phonetics: "เข่อ-อี่" },
+  "ได้ครับ": { zh: "可以", pinyin: "kěyǐ", phonetics: "เข่อ-อี่" },
+  "ได้ค่ะ": { zh: "可以", pinyin: "kěyǐ", phonetics: "เข่อ-อี่" },
+  "โอเค": { zh: "好的", pinyin: "hǎo de", phonetics: "ห่าว-เตอะ" },
   "ไม่ได้": { zh: "不行", pinyin: "bù xíng", phonetics: "ปู้-สิง" },
   "ขอโทษ": { zh: "对不起", pinyin: "duìbuqǐ", phonetics: "ตุ้ย-ปู้-ฉี่" },
   "ขอโทษครับ": { zh: "对不起", pinyin: "duìbuqǐ", phonetics: "ตุ้ย-ปู้-ฉี่" },
@@ -135,6 +147,10 @@ const DICT_TH_TO_ZH: Record<string, { zh: string; pinyin: string; phonetics: str
   "เอาอันนี้": { zh: "我要这个", pinyin: "wǒ yào zhège", phonetics: "หว่อ-เย่า-เจ้อ-เกอะ" },
   "ไม่เอา": { zh: "不要", pinyin: "bù yào", phonetics: "ปู้-เย่า" },
   "ชอบมาก": { zh: "我很喜欢", pinyin: "wǒ hěn xǐhuan", phonetics: "หว่อ-เหิ่น-สี่-ฮวน" },
+  "กินข้าว": { zh: "吃饭", pinyin: "chīfàn", phonetics: "ชรือ-ฟ่าน" },
+  "กินข้าวหรือยัง": { zh: "你吃了吗？", pinyin: "nǐ chī le ma?", phonetics: "หนี่-ชรือ-เลอ-มา" },
+  "หิวข้าว": { zh: "肚子饿了", pinyin: "dùzi è le", phonetics: "ตู้-จื่อ-เอ้อ-เลอ" },
+  "อิ่มแล้ว": { zh: "吃饱了", pinyin: "chī bǎo le", phonetics: "ชรือ-เป่า-เลอ" },
   "หนึ่ง": { zh: "一", pinyin: "yī", phonetics: "อี" },
   "สอง": { zh: "二", pinyin: "èr", phonetics: "เอ้อร์" },
   "สาม": { zh: "三", pinyin: "sān", phonetics: "ซาน" },
@@ -169,6 +185,8 @@ const DICT_ZH_TO_TH: Record<string, { th: string; pinyin: string; phonetics: str
   "没关系": { th: "ไม่เป็นไรครับ", pinyin: "méi guānxi", phonetics: "เหมย-กวาน-ซี" },
   "再见": { th: "ลาก่อนครับ / พบกันใหม่", pinyin: "zàijiàn", phonetics: "ไจ้-เจี้ยน" },
   "好的": { th: "โอเคครับ / ได้ครับ", pinyin: "hǎo de", phonetics: "ห่าว-เตอะ" },
+  "对": { th: "ใช่ครับ", pinyin: "duì", phonetics: "ตุ้ย" },
+  "对的": { th: "ใช่เลยครับ", pinyin: "duì de", phonetics: "ตุ้ย-เตอะ" },
   "可以": { th: "ได้ครับ", pinyin: "kěyǐ", phonetics: "เข่อ-อี่" },
   "不行": { th: "ไม่ได้ครับ", pinyin: "bù xíng", phonetics: "ปู้-สิง" },
   "明白了": { th: "เข้าใจแล้วครับ", pinyin: "míngbai le", phonetics: "หมิง-ไป๋-เลอ" },
@@ -176,6 +194,9 @@ const DICT_ZH_TO_TH: Record<string, { th: string; pinyin: string; phonetics: str
   "请等一下": { th: "กรุณารอสักครู่ครับ", pinyin: "qǐng děng yíxià", phonetics: "ฉิ่ง-เติ่ง-อี๋-เซี่ย" },
   "这是什么": { th: "นี่คืออะไรครับ", pinyin: "zhè shì shénme", phonetics: "เจ้อ-ซื่อ-เสิน-เมอะ" },
   "欢迎": { th: "ยินดีต้อนรับครับ", pinyin: "huānyíng", phonetics: "ฮวาน-หยิง" },
+  "吃了吗": { th: "กินข้าวหรือยังครับ", pinyin: "chī le ma", phonetics: "ชรือ-เลอ-มา" },
+  "走吧": { th: "ไปกันเถอะครับ", pinyin: "zǒu ba", phonetics: "โจ่ว-ปะ" },
+  "真的吗": { th: "จริงเหรอครับ", pinyin: "zhēn de ma", phonetics: "เจิน-เตอะ-มา" },
 };
 
 function lookupDictionary(text: string, targetLang: string) {
@@ -274,8 +295,10 @@ Output JSON matching schema:
 
       const response = await generateWithFallback({
         contents: prompt,
+        preferredModels: ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"],
         config: {
-          temperature: 0.1,
+          temperature: 0.0,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -356,6 +379,14 @@ Output JSON matching schema:
         return res.status(400).json({ error: "audioBase64 is required" });
       }
 
+      if (!process.env.GEMINI_API_KEY) {
+        return res.json({
+          success: false,
+          error: "GEMINI_API_KEY is not configured",
+          isEmpty: true,
+        });
+      }
+
       const ai = getGenAI();
 
       const audioPart = {
@@ -365,14 +396,17 @@ Output JSON matching schema:
         },
       };
 
-      const prompt = `You are a real-time live bilingual interpreter between Thai and Chinese.
-Listen to the audio. The speaker is speaking either Thai or Chinese.
-1. 'originalText': transcribe the exact words spoken (in Thai script if Thai, or Simplified Chinese characters if Chinese). If silence or background noise, return "".
-2. 'detectedLang': automatically detect which language was spoken: 'th' or 'zh'.
-3. 'targetLang': translate into the other language ('zh' if spoken Thai, or 'th' if spoken Chinese).
+      const prompt = `You are an ultra-fast real-time bilingual interpreter between Thai and Chinese.
+Transcribe and translate all spoken words immediately. Capture every voice, whisper, quiet speech, short phrase, or conversational sound without hesitation.
+If and only if the audio is completely dead silent with zero sound, return isEmpty: true.
+Otherwise, return:
+1. 'originalText': accurate transcription of spoken words (Thai script or Simplified Chinese characters).
+2. 'detectedLang': 'th' or 'zh'.
+3. 'targetLang': opposite language ('zh' if spoken Thai, or 'th' if spoken Chinese).
 4. 'translatedText': natural fluent conversational translation into targetLang.
-5. 'pinyin': standard Pinyin with tone marks if translated to Chinese (or empty string if translated to Thai).
-6. 'phoneticsForReader': if translated to Chinese, provide easy Thai phonetic syllables (e.g. 'หนี-ห่าว').
+5. 'pinyin': standard Pinyin with tone marks if translated to Chinese, or empty string if Thai.
+6. 'phoneticsForReader': easy Thai phonetic syllables if translated to Chinese (e.g. 'หนี-ห่าว').
+7. 'isEmpty': false.
 Output strict JSON.`;
 
       const response = await generateWithFallback({
@@ -382,21 +416,23 @@ Output strict JSON.`;
             { text: prompt },
           ],
         },
-        preferredModels: ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3.5-flash"],
+        preferredModels: ["gemini-3.8-flash", "gemini-flash-latest"],
         config: {
           temperature: 0.0,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               originalText: { type: Type.STRING, description: "Transcribed speech in spoken language" },
-              detectedLang: { type: Type.STRING, description: "th or zh" },
-              targetLang: { type: Type.STRING, description: "zh or th" },
+              detectedLang: { type: Type.STRING, description: "th or zh or none" },
+              targetLang: { type: Type.STRING, description: "zh or th or none" },
               translatedText: { type: Type.STRING, description: "Natural translation into opposite language" },
               pinyin: { type: Type.STRING, description: "Pinyin with tones" },
               phoneticsForReader: { type: Type.STRING, description: "Phonetic reading helper" },
+              isEmpty: { type: Type.BOOLEAN, description: "True if audio was noise or empty" },
             },
-            required: ["originalText", "detectedLang", "translatedText"],
+            required: ["originalText", "detectedLang", "translatedText", "isEmpty"],
           },
         },
       });
@@ -404,8 +440,8 @@ Output strict JSON.`;
       const responseText = response.text?.trim() || "{}";
       const result = JSON.parse(responseText);
 
-      // Verify if speech was empty or silence
-      if (!result.originalText || !result.originalText.trim()) {
+      // Verify if speech was empty or silence or flagged as noise
+      if (result.isEmpty || !result.originalText || !result.originalText.trim()) {
         return res.json({
           success: true,
           isEmpty: true,

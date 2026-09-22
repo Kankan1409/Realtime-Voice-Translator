@@ -3,8 +3,6 @@ import { VoiceHeader } from './components/VoiceHeader';
 import { VoiceTranslatorTemplate } from './components/VoiceTranslatorTemplate';
 import { VoiceBottomNav, BottomNavTab } from './components/VoiceBottomNav';
 import { SettingsModal } from './components/SettingsModal';
-import { CameraTranslateModal } from './components/CameraTranslateModal';
-import { TextTranslateModal } from './components/TextTranslateModal';
 import { HistorySummaryModal } from './components/HistorySummaryModal';
 import { AISummaryResultModal } from './components/AISummaryResultModal';
 import { OnePageReportModal } from './components/OnePageReportModal';
@@ -87,8 +85,6 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<BottomNavTab>('voice');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
-  const [isCameraOpen, setIsCameraOpen] = useState(false);
-  const [isTextOpen, setIsTextOpen] = useState(false);
   const [isHistorySummaryOpen, setIsHistorySummaryOpen] = useState(false);
   const [isOnePageModalOpen, setIsOnePageModalOpen] = useState(false);
   const [isOnePageVisualOpen, setIsOnePageVisualOpen] = useState(false);
@@ -636,15 +632,7 @@ export default function App() {
     setInterimTranscript('');
   }, []);
 
-  // Switch active speaker during continuous conversation
-  const handleSwitchAutoSpeaker = useCallback((lang: Language) => {
-    setActiveSpeaker(lang);
-    if (autoInterpreterRef.current && 'switchSpeaker' in autoInterpreterRef.current) {
-      autoInterpreterRef.current.switchSpeaker(lang);
-    }
-  }, []);
-
-  // Start continuous hands-free auto-interpreter (Thai ⇄ Chinese dual auto-detect & auto-alternating)
+  // Start continuous hands-free auto-interpreter (Thai ⇄ Chinese dual auto-detect)
   const startAutoListening = useCallback(async () => {
     // Stop any manual listening first
     handleStopListening();
@@ -701,11 +689,12 @@ export default function App() {
       initialSpeaker
     );
 
+    manager.setAutoAlternate(true);
     autoInterpreterRef.current = manager;
     const ok = await manager.start();
     if (ok) {
       setIsAutoListening(true);
-      showToast('🎙️ เริ่มแปลอัตโนมัติแล้ว ใครพูดภาษาไหนก็แปลให้ทันที');
+      showToast('🎙️ เริ่มจับเสียงสดการประชุมแล้ว แปลไทย-จีน อัตโนมัติ');
     } else {
       setIsAutoListening(false);
       setAutoStatus('idle');
@@ -735,10 +724,6 @@ export default function App() {
     setCurrentTab(tab);
     if (tab === 'history') {
       setIsHistorySummaryOpen(true);
-    } else if (tab === 'camera') {
-      setIsCameraOpen(true);
-    } else if (tab === 'text') {
-      setIsTextOpen(true);
     }
   };
 
@@ -785,7 +770,6 @@ export default function App() {
           onStartAutoListen={startAutoListening}
           onStopAndSummarize={handleStopAndSummarize}
           onOpenFullSummaryModal={() => setIsAISummaryModalOpen(true)}
-          onSwitchAutoSpeaker={handleSwitchAutoSpeaker}
           onOpenOnePageReport={() => handleOpenOnePageReport(currentTopic)}
           onOpenOnePageVisual={() => handleOpenOnePageVisual(currentTopic)}
           onOpenPDFReport={() => handleOpenPDFDocument(currentTopic)}
@@ -795,7 +779,7 @@ export default function App() {
         />
       </main>
 
-      {/* 3. Bottom 4-Tab Navigation Bar (Text | Camera | Voice | History) */}
+      {/* 3. Bottom 2-Tab Navigation Bar (Live Voice | Meeting Minutes) */}
       <VoiceBottomNav
         currentTab={currentTab}
         onTabChange={handleTabChange}
@@ -813,37 +797,6 @@ export default function App() {
         fontSize={fontSize}
         onChangeFontSize={setFontSize}
         onClearHistory={handleClearHistory}
-      />
-
-      <TextTranslateModal
-        isOpen={isTextOpen}
-        onClose={() => {
-          setIsTextOpen(false);
-          setCurrentTab('voice');
-        }}
-        onTranslate={async (text, targetLang) => {
-          const sourceLang = targetLang === 'zh' ? 'th' : 'zh';
-          await handleTranslateText(text, sourceLang);
-        }}
-        onSpeak={speakText}
-      />
-
-      <CameraTranslateModal
-        isOpen={isCameraOpen}
-        onClose={() => {
-          setIsCameraOpen(false);
-          setCurrentTab('voice');
-        }}
-        onTranslateResult={(original, translated, speaker) => {
-          const newRec: TranslationRecord = {
-            id: 'cam-' + Date.now(),
-            timestamp: Date.now(),
-            speaker,
-            originalText: original,
-            translatedText: translated,
-          };
-          addRecordToCurrentTopic(newRec);
-        }}
       />
 
       {/* 4. Compact Topic Archive Modal */}

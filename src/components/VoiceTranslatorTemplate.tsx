@@ -45,7 +45,6 @@ interface VoiceTranslatorTemplateProps {
   onStartAutoListen?: () => void;
   onStopAndSummarize?: () => void;
   onOpenFullSummaryModal?: () => void;
-  onSwitchAutoSpeaker?: (lang: Language) => void;
   onOpenOnePageReport?: () => void;
   onOpenOnePageVisual?: () => void;
   onOpenPDFReport?: () => void;
@@ -77,7 +76,6 @@ export function VoiceTranslatorTemplate({
   onStartAutoListen,
   onStopAndSummarize,
   onOpenFullSummaryModal,
-  onSwitchAutoSpeaker,
   onOpenOnePageReport,
   onOpenOnePageVisual,
   onOpenPDFReport,
@@ -325,9 +323,6 @@ export function VoiceTranslatorTemplate({
               <div className="font-bold text-slate-800 text-base sm:text-lg">
                 ล่ามแปลเสียงสดอัตโนมัติ ไทย ⇄ จีน
               </div>
-              <p className="text-xs sm:text-sm text-slate-500 max-w-xs mt-1.5 leading-relaxed">
-                กดปุ่ม <span className="font-bold text-blue-600">"เริ่มแปลสนทนาอัตโนมัติ"</span> ด้านล่าง แล้ววางโทรศัพท์ไว้ตรงกลาง ใครพูดภาษาไทยก็แปลเป็นจีน ใครพูดภาษาจีนก็แปลเป็นไทยทันที ใครพูดก็แปลให้อัตโนมัติ ไม่ต้องแบ่งฝ่าย!
-              </p>
             </div>
 
             <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 max-w-xs text-left text-xs text-slate-600 shadow-2xs space-y-2">
@@ -438,7 +433,7 @@ export function VoiceTranslatorTemplate({
           );
         })}
 
-        {/* Live recognition / auto interpretation interim state */}
+        {/* Live recognition / auto interpretation interim state for Meetings */}
         {isAutoListening && (
           <div className={`rounded-2xl p-4 border-2 transition-all ${
             autoStatus === 'speaking'
@@ -458,10 +453,10 @@ export function VoiceTranslatorTemplate({
                 }`} />
                 <span className="text-xs font-bold text-slate-800">
                   {autoStatus === 'speaking'
-                    ? '🗣️ ได้ยินเสียงพูด... กำลังแปลให้อัตโนมัติ'
+                    ? '🗣️ กำลังจับเสียงพูดในที่ประชุม...'
                     : autoStatus === 'processing'
-                    ? '⚡ แปลภาษาสำเร็จเรียบร้อย...'
-                    : '🟢 เปิดไมค์อยู่ ใครพูดภาษาไหนก็แปลให้ทันที'}
+                    ? '⚡ กำลังแปลภาษาทันที...'
+                    : '🟢 ไมค์ห้องประชุมพร้อมฟัง... พูดไทยหรือจีนได้เลย'}
                 </span>
               </div>
               <AudioWaveform isActive={autoStatus === 'speaking' || autoStatus === 'processing' || liveVolume > 5} color="bg-blue-600" barsCount={8} />
@@ -471,9 +466,9 @@ export function VoiceTranslatorTemplate({
             {interimTranscript && (
               <div className="mt-2.5 pt-2 border-t border-blue-200/60 flex items-start gap-2 animate-fadeIn">
                 <span className="text-[11px] font-bold text-blue-700 bg-blue-100/90 px-2 py-0.5 rounded-md shrink-0">
-                  สถานะ:
+                  กำลังพูดสด:
                 </span>
-                <span className="text-sm font-semibold text-slate-800 break-words leading-snug">
+                <span className="text-sm sm:text-base font-semibold text-slate-900 break-words leading-snug">
                   "{interimTranscript}"
                 </span>
               </div>
@@ -487,7 +482,7 @@ export function VoiceTranslatorTemplate({
             <div className="text-xs font-bold text-blue-600 mb-1 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
               <span>
-                กำลังฟังเสียง... (พูดภาษาไทยหรือจีนก็ได้ ตรวจจับภาษาอัตโนมัติ)
+                กำลังฟังเสียง... (พูดไทยหรือจีน ระบบแปลให้อัตโนมัติ)
               </span>
             </div>
             <div className="font-medium text-slate-800 text-base">
@@ -500,34 +495,36 @@ export function VoiceTranslatorTemplate({
       {/* Bottom Control Section */}
       <div className="p-3 bg-white/95 backdrop-blur-md border-t border-slate-200/80 shadow-lg shrink-0">
         <div className="max-w-md mx-auto space-y-2">
-          {/* 1. If currently in Auto-Listening Mode: Auto-detect status & Stop & Summarize Button */}
+          {/* 1. If currently in Auto-Listening Mode: Live status & Stop/Summarize Button */}
           {isAutoListening ? (
-            <div className="space-y-2">
-              {/* Auto-Detection Status Pill (No manual speaker switching!) */}
-              <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-blue-50 p-2.5 rounded-2xl border border-blue-200/90 flex items-center justify-between gap-2 shadow-2xs">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-blue-950 flex items-center gap-1.5 truncate">
-                      <span>✨ โหมดใครพูดก็แปล (แปลอัตโนมัติ)</span>
+            <div className="space-y-2.5">
+              {/* Auto-Detection Status Pill - Single Unified Meeting Room Mic */}
+              <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-blue-50 p-3 rounded-2xl border border-blue-200/90 shadow-2xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                      <Mic className="w-4 h-4 text-white" />
                     </div>
-                    <div className="text-[11px] text-blue-800/80 truncate">
-                      พูดภาษาไทยหรือจีนก็ได้ ระบบจะแปลให้อัตโนมัติทันที
+                    <div className="min-w-0">
+                      <div className="text-xs sm:text-sm font-bold text-blue-950 flex items-center gap-1.5 truncate">
+                        <span>🎙️ กำลังดักฟังเสียงการประชุมสด (ไทย ⇄ จีน)</span>
+                      </div>
+                      <div className="text-[11px] text-blue-800/80 truncate">
+                        พูดภาษาไทยหรือจีนในห้องประชุมได้เลย ระบบแปลให้อัตโนมัติ
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                  <span>กำลังฟัง</span>
+                  <div className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                    <span>ไมค์เปิดอยู่</span>
+                  </div>
                 </div>
               </div>
 
               {/* Dynamic Live Status Bar */}
-              <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
                     autoStatus === 'speaking'
                       ? 'bg-blue-600 animate-ping'
                       : autoStatus === 'processing'
@@ -536,96 +533,55 @@ export function VoiceTranslatorTemplate({
                   }`} />
                   <span className="font-semibold text-slate-700 truncate">
                     {autoStatus === 'speaking'
-                      ? '🗣️ ได้ยินเสียงพูด... กำลังจับเสียง'
+                      ? '🗣️ กำลังจับเสียงพูดในห้องประชุม...'
                       : autoStatus === 'processing'
-                      ? '⚡ กำลังแปลภาษาให้อัตโนมัติ...'
-                      : '🟢 เปิดไมค์อยู่ ใครพูดภาษาไหนก็แปลให้ทันที'}
+                      ? '⚡ กำลังแปลภาษาทันที...'
+                      : '🟢 ไมค์ห้องประชุมเปิดอยู่... พูดภาษาไทยหรือจีนได้เลย'}
                   </span>
                 </div>
-                <div className="text-[11px] text-blue-600 font-bold shrink-0">
+                <div className="text-xs text-blue-600 font-bold shrink-0">
                   {records.length} ข้อความ
                 </div>
               </div>
 
-              {/* Master STOP & SUMMARIZE Button requested by user */}
+              {/* Master STOP & SUMMARIZE Button for Meeting Minutes */}
               <button
                 type="button"
                 onClick={onStopAndSummarize}
-                className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-rose-600 via-indigo-700 to-rose-600 text-white font-bold text-sm sm:text-base shadow-lg shadow-rose-500/25 flex items-center justify-center gap-2.5 transition-all transform active:scale-[0.98] hover:shadow-xl animate-pulse"
-                title="กดหยุดการสนทนา แล้วให้ AI สรุปเนื้อหาทันที"
+                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-rose-600 via-indigo-700 to-rose-600 text-white font-bold text-sm sm:text-base shadow-lg shadow-rose-500/25 flex items-center justify-center gap-2.5 transition-all transform active:scale-[0.98] hover:shadow-xl"
+                title="กดหยุดการประชุม แล้วให้ AI สรุปรายงานการประชุมทันที"
               >
                 <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
                   <Square className="w-4 h-4 fill-white text-white" />
                 </div>
                 <div className="text-left">
                   <div className="font-bold flex items-center gap-1.5 leading-tight">
-                    <span>หยุดคุย และให้ AI สรุปเนื้อหา</span>
+                    <span>หยุดประชุม & ให้ AI สรุปรายงาน</span>
                     <Sparkles className="w-4 h-4 text-amber-300" />
                   </div>
                   <div className="text-[11px] text-rose-100 font-normal leading-tight mt-0.5">
-                    กดหยุดเมื่อคุยจบ AI จะสรุปประเด็นและข้อตกลงให้ทันที
+                    สรุปประเด็น ข้อตกลง และสิ่งที่ต้องดำเนินการ (Action Items)
                   </div>
                 </div>
               </button>
             </div>
           ) : (
-            /* 2. When Not Listening: Big HERO "เริ่มแปลสนทนาอัตโนมัติ" Button */
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={onStartAutoListen}
-                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 text-white font-bold shadow-lg shadow-blue-500/25 flex items-center justify-center gap-3 transition-all transform active:scale-[0.98] hover:shadow-xl hover:from-blue-700 hover:to-indigo-700"
-              >
-                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-xs">
-                  <Mic className="w-5 h-5 text-white" />
-                </div>
-                <div className="text-left flex-1 min-w-0">
-                  <div className="text-sm sm:text-base font-bold flex items-center gap-2 leading-tight">
-                    <span>เริ่มแปลอัตโนมัติ (ใครพูดก็แปล)</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-400 text-emerald-950 font-extrabold shrink-0">
-                      ใครพูดก็แปล 🇹🇭 ⇄ 🇨🇳
-                    </span>
-                  </div>
-                  <div className="text-xs text-blue-100 font-normal leading-tight mt-1 truncate">
-                    แตะครั้งเดียว วางไว้ตรงกลาง ใครพูดภาษาไหนก็แปลให้ทันที ไม่ต้องแบ่งฝ่าย
-                  </div>
-                </div>
-              </button>
-
-              {/* Sub-toggle for manual per-sentence talk if needed */}
-              <div className="pt-0.5 flex items-center justify-center">
-                <button
-                  type="button"
-                  onClick={() => setShowManualToggles(!showManualToggles)}
-                  className="text-[11px] text-slate-400 hover:text-slate-600 transition flex items-center gap-1 font-medium"
-                >
-                  <span>{showManualToggles ? 'ซ่อนโหมดกดพูดทีละประโยค' : 'หรือต้องการแตะเพื่อพูดทีละประโยค?'}</span>
-                  <ChevronRight className={`w-3 h-3 transition-transform ${showManualToggles ? 'rotate-90' : ''}`} />
-                </button>
+            /* 2. When Not Listening: Single Unified Meeting Microphone Button - No sides, no split buttons */
+            <button
+              type="button"
+              onClick={onStartAutoListen}
+              className="w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 text-white font-bold text-base shadow-lg shadow-blue-500/25 flex items-center justify-center gap-3.5 transition-all transform active:scale-[0.98] hover:shadow-xl hover:from-blue-700 hover:to-indigo-700"
+            >
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-xs">
+                <Mic className="w-6 h-6 text-white" />
               </div>
-
-              {/* Collapsible Manual Talk - Single Unified Button with Auto Detection */}
-              {showManualToggles && (
-                <div className="pt-1 animate-fadeIn">
-                  <button
-                    type="button"
-                    onClick={handleManualMicClick}
-                    className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 border shadow-2xs active:scale-98 ${
-                      isListening
-                        ? 'bg-rose-500 border-rose-600 text-white ring-4 ring-rose-200 animate-pulse'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    {isListening ? <MicOff className="w-4 h-4 text-white" /> : <Mic className="w-4 h-4 text-blue-600" />}
-                    <span>
-                      {isListening
-                        ? 'กำลังฟังเสียง... แตะเพื่อหยุดและแปลทันที'
-                        : 'แตะเพื่อพูด (พูดไทยหรือจีนก็ได้ ตรวจจับภาษาอัตโนมัติ)'}
-                    </span>
-                  </button>
+              <div className="text-left">
+                <div className="font-bold text-base sm:text-lg leading-tight">เปิดไมค์แปลสดการประชุม (ไทย ⇄ จีน)</div>
+                <div className="text-xs text-blue-100 font-normal leading-tight mt-0.5">
+                  ไมค์ตัวเดียวจับเสียงในห้องประชุม พูดไทยหรือจีน แปลให้อัตโนมัติทันที
                 </div>
-              )}
-            </div>
+              </div>
+            </button>
           )}
         </div>
       </div>

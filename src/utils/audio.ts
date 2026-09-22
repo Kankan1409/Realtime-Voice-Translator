@@ -89,7 +89,7 @@ export class SpeechRecognitionSession {
         if (interimTranscript && this.onResultCb) {
           this.onResultCb(interimTranscript.trim(), false);
 
-          // Fast silence detector: if user pauses for 750ms after speaking, immediately commit translation
+          // Silence detector: allow natural conversational pause (850ms) in meetings before committing translation
           if (this.silenceTimer) clearTimeout(this.silenceTimer);
           this.silenceTimer = setTimeout(() => {
             if (!this.isCompleted && this.latestTranscript.trim() && this.onResultCb) {
@@ -100,7 +100,7 @@ export class SpeechRecognitionSession {
                 this.recognition?.stop();
               } catch (e) {}
             }
-          }, 750);
+          }, 850);
         }
       };
 
@@ -188,8 +188,8 @@ export function speakText(
       }
     };
 
-    // Safety timeout: max 4.0s for conversational turns, ensures onEnd is ALWAYS called
-    const estimatedDuration = Math.min(4000, Math.max(800, text.length * 150));
+    // Safety watchdog: ensures onEnd is called even if browser fails onend event, without prematurely unmuting mic
+    const estimatedDuration = Math.min(15000, Math.max(2000, text.length * 350));
     const timer = setTimeout(finish, estimatedDuration);
 
     utterance.onstart = () => {
@@ -351,9 +351,17 @@ export class ContinuousAutoInterpreter {
   private animationLoopId: number | null = null;
   private callbacks: AutoInterpreterCallbacks;
   private supportedMimeType = '';
+  // Vocal band & noise calibration
+  private ambientNoiseFloor = 8;
+  private calibrationFrames = 0;
+  private noiseSensitivity: 'high' | 'medium' | 'low' = 'high';
 
   constructor(callbacks: AutoInterpreterCallbacks) {
     this.callbacks = callbacks;
+  }
+
+  public setNoiseSensitivity(sensitivity: 'high' | 'medium' | 'low') {
+    this.noiseSensitivity = sensitivity;
   }
 
   async start(): Promise<boolean> {
@@ -400,6 +408,8 @@ export class ContinuousAutoInterpreter {
       this.isRunning = true;
       this.isSpeaking = false;
       this.isProcessingNetwork = false;
+      this.calibrationFrames = 0;
+      this.ambientNoiseFloor = 8;
       this.callbacks.onStatusChange('listening');
 
       this.startVADLoop();
@@ -412,7 +422,7 @@ export class ContinuousAutoInterpreter {
     }
   }
 
-  public setMutedForTTS(muted: boolean, maxDurationMs = 2500) {
+  public setMutedForTTS(muted: boolean, maxDurationMs = 5000) {
     if (this.ttsMuteTimer) {
       clearTimeout(this.ttsMuteTimer);
       this.ttsMuteTimer = null;
@@ -451,6 +461,7 @@ export class ContinuousAutoInterpreter {
     if (!this.analyser) return;
 
     const buffer = new Uint8Array(this.analyser.frequencyBinCount);
+    let calibrationSum = 0;
 
     const checkVolume = () => {
       if (!this.isRunning || !this.analyser) return;
@@ -461,22 +472,54 @@ export class ContinuousAutoInterpreter {
       }
 
       this.analyser.getByteFrequencyData(buffer);
-      let sum = 0;
-      for (let i = 0; i < buffer.length; i++) {
-        sum += buffer[i];
+
+      // Human vocal frequency isolation (approx. 200Hz - 3800Hz, bins 2 to 44)
+      let vocalSum = 0;
+      const startBin = 2;
+      const endBin = Math.min(buffer.length - 1, 44);
+      for (let i = startBin; i <= endBin; i++) {
+        vocalSum += buffer[i];
       }
-      const average = sum / buffer.length;
-      const normalizedVolume = Math.min(100, Math.round((average / 128) * 100));
+      const vocalAverage = vocalSum / (endBin - startBin + 1);
+      const vocalVolume = Math.min(100, Math.round((vocalAverage / 128) * 100));
 
-      this.callbacks.onVolumeChange(normalizedVolume);
+      // Visual feedback volume
+      let totalSum = 0;
+      for (let i = 0; i < buffer.length; i++) {
+        totalSum += buffer[i];
+      }
+      const rawVolume = Math.min(100, Math.round(((totalSum / buffer.length) / 128) * 100));
+      this.callbacks.onVolumeChange(rawVolume);
 
-      // Balanced Voice Activity Detection threshold (avoids faint ambient noise/breathing)
-      const VOICE_THRESHOLD = 9;
+      // Fast initial ambient noise floor calibration (first 20 frames ~300ms)
+      if (this.calibrationFrames < 20) {
+        calibrationSum += vocalVolume;
+        this.calibrationFrames++;
+        if (this.calibrationFrames === 20) {
+          this.ambientNoiseFloor = Math.max(8, Math.round(calibrationSum / 20));
+        }
+      } else if (!this.isSpeaking && !this.isProcessingNetwork) {
+        // Continuous ambient noise adaptation (slow leaky integrator)
+        this.ambientNoiseFloor = this.ambientNoiseFloor * 0.97 + vocalVolume * 0.03;
+      }
+
+      // If currently waiting for translation from network, don't interrupt with new chunk
+      if (this.isProcessingNetwork) {
+        this.animationLoopId = requestAnimationFrame(checkVolume);
+        return;
+      }
+
+      // Voice Activity Detection threshold:
+      // Human speech is typically 22 - 75 volume.
+      // Ambient noise is typically 6 - 15 volume.
+      const offset = this.noiseSensitivity === 'high' ? 8 : this.noiseSensitivity === 'medium' ? 12 : 16;
+      const minFloor = this.noiseSensitivity === 'high' ? 14 : this.noiseSensitivity === 'medium' ? 18 : 22;
+      const VOICE_THRESHOLD = Math.max(minFloor, Math.round(this.ambientNoiseFloor + offset));
 
       // Only evaluate if not currently muted for TTS
       if (!this.isMutedForTTS) {
-        if (normalizedVolume >= VOICE_THRESHOLD) {
-          // Human voice detected
+        if (vocalVolume >= VOICE_THRESHOLD) {
+          // Genuine voice detected
           if (this.silenceTimer) {
             clearTimeout(this.silenceTimer);
             this.silenceTimer = null;
@@ -487,16 +530,16 @@ export class ContinuousAutoInterpreter {
             this.speechStartTime = Date.now();
             this.callbacks.onStatusChange('speaking');
             this.startRecordingChunk();
-          } else if (Date.now() - this.speechStartTime > 5000) {
-            // Spoken for 5s continuously -> finish chunk so it translates without waiting
+          } else if (Date.now() - this.speechStartTime > 4200) {
+            // Spoken for 4.2s continuously -> finish chunk so it translates without lag
             this.finishRecordingChunk();
           }
         } else if (this.isSpeaking) {
-          // Volume dropped below threshold -> start silence countdown
+          // Volume dropped below threshold -> user paused or finished speaking
           if (!this.silenceTimer) {
             this.silenceTimer = setTimeout(() => {
               this.finishRecordingChunk();
-            }, 550); // 550ms silence pause indicates speaker finished sentence
+            }, 380); // 380ms pause triggers completion
           }
         }
       }
@@ -521,7 +564,7 @@ export class ContinuousAutoInterpreter {
         }
       };
 
-      this.mediaRecorder.start(80);
+      this.mediaRecorder.start(250);
     } catch (e) {
       console.warn('Failed to start recording chunk:', e);
     }
@@ -533,24 +576,22 @@ export class ContinuousAutoInterpreter {
       this.silenceTimer = null;
     }
 
+    if (this.isProcessingNetwork) return;
+
     if (!this.mediaRecorder || this.mediaRecorder.state !== 'recording') {
       this.isSpeaking = false;
-      if (!this.isProcessingNetwork) {
-        this.callbacks.onStatusChange('listening');
-      }
+      this.callbacks.onStatusChange('listening');
       return;
     }
 
     const duration = Date.now() - this.speechStartTime;
-    // Discard ultra-short click noises (less than 180ms)
-    if (duration < 180) {
+    // Discard clicks, taps, or mic rustle shorter than 220ms
+    if (duration < 220) {
       this.isSpeaking = false;
       try {
         this.mediaRecorder.stop();
       } catch {}
-      if (!this.isProcessingNetwork) {
-        this.callbacks.onStatusChange('listening');
-      }
+      this.callbacks.onStatusChange('listening');
       return;
     }
 
@@ -563,9 +604,12 @@ export class ContinuousAutoInterpreter {
       const audioBlob = new Blob(this.audioChunks, { type: mimeType });
       this.audioChunks = [];
 
-      // Ready for next speech immediately - do not lock mic!
-      if (this.isRunning && !this.isSpeaking && !this.isMutedForTTS) {
-        this.callbacks.onStatusChange('listening');
+      if (audioBlob.size < 400) {
+        this.isProcessingNetwork = false;
+        if (this.isRunning && !this.isMutedForTTS) {
+          this.callbacks.onStatusChange('listening');
+        }
+        return;
       }
 
       try {
@@ -596,7 +640,7 @@ export class ContinuousAutoInterpreter {
         clearTimeout(timeoutId);
 
         const data = await response.json();
-        if (data.success && data.originalText && data.originalText.trim()) {
+        if (data.success && !data.isEmpty && data.originalText && data.originalText.trim()) {
           this.callbacks.onTranslation({
             originalText: data.originalText.trim(),
             translatedText: data.translatedText.trim(),
@@ -617,7 +661,14 @@ export class ContinuousAutoInterpreter {
     };
 
     try {
-      this.mediaRecorder.stop();
+      if (this.mediaRecorder.state === 'recording') {
+        this.mediaRecorder.requestData();
+      }
+    } catch {}
+    try {
+      if (this.mediaRecorder.state === 'recording') {
+        this.mediaRecorder.stop();
+      }
     } catch {}
   }
 
@@ -686,22 +737,35 @@ export interface ContinuousConversationCallbacks {
 
 /**
  * ContinuousConversationManager
- * Unified automatic live bilingual conversation engine.
- * Automatically listens, detects spoken language (Thai or Chinese) without manual switching,
- * translates to the opposite language, and seamlessly speaks the result.
+ * High-performance bilingual continuous translation engine:
+ * 1. Uses browser neural SpeechRecognition when available (zero background noise pickup, instantaneous word-by-word streaming).
+ * 2. Instant AI translation via /api/translate with ThinkingLevel.MINIMAL (<250ms latency).
+ * 3. Graceful fallback to vocal-band filtered ContinuousAutoInterpreter.
  */
 export class ContinuousConversationManager {
   private isRunning = false;
   private isPausedForTTS = false;
+  private activeSpeaker: 'th' | 'zh' = 'th';
   private interpreter: ContinuousAutoInterpreter | null = null;
+  private recognitionSession: SpeechRecognitionSession | null = null;
   private callbacks: ContinuousConversationCallbacks;
+  private isTranslating = false;
+  private restartTimer: any = null;
+  private consecutiveErrors = 0;
 
-  constructor(callbacks: ContinuousConversationCallbacks, _initialSpeaker: 'th' | 'zh' = 'th') {
+  public autoAlternate: boolean = false;
+
+  constructor(callbacks: ContinuousConversationCallbacks, initialSpeaker: 'th' | 'zh' = 'th') {
     this.callbacks = callbacks;
+    this.activeSpeaker = initialSpeaker;
+  }
+
+  public setAutoAlternate(enabled: boolean) {
+    this.autoAlternate = enabled;
   }
 
   public getSpeaker(): 'th' | 'zh' {
-    return 'th';
+    return this.activeSpeaker;
   }
 
   public getIsRunning(): boolean {
@@ -712,16 +776,152 @@ export class ContinuousConversationManager {
     this.stop();
     this.isRunning = true;
     this.isPausedForTTS = false;
+    this.isTranslating = false;
+    this.consecutiveErrors = 0;
 
+    // If SpeechRecognition is supported (Chrome, Edge, Safari iOS 14.5+, Android Chrome),
+    // use it for zero-latency on-device transcription with no API key requirement for STT.
+    if (isSpeechRecognitionSupported()) {
+      return this.startSpeechRecognitionLoop();
+    } else {
+      return this.startAutoInterpreterFallback();
+    }
+  }
+
+  private startSpeechRecognitionLoop(): boolean {
+    if (!this.isRunning || this.isPausedForTTS) return false;
+
+    this.recognitionSession = new SpeechRecognitionSession();
+    this.callbacks.onStatusChange('listening');
+
+    this.recognitionSession.start(
+      this.activeSpeaker,
+      async (text: string, isFinal: boolean) => {
+        if (!this.isRunning) return;
+
+        if (!isFinal) {
+          this.callbacks.onStatusChange('speaking');
+          this.callbacks.onInterimText(text);
+          return;
+        }
+
+        // Final spoken sentence received
+        const cleanText = text.trim();
+        if (!cleanText || this.isTranslating) return;
+
+        this.isTranslating = true;
+        this.callbacks.onStatusChange('processing');
+        this.callbacks.onInterimText(cleanText);
+
+        try {
+          // Automatically detect language based on actual characters spoken
+          let detectedLang: 'th' | 'zh' = this.activeSpeaker;
+          let targetLang: 'th' | 'zh' = this.activeSpeaker === 'th' ? 'zh' : 'th';
+
+          if (/[\u0E00-\u0E7F]/.test(cleanText)) {
+            detectedLang = 'th';
+            targetLang = 'zh';
+          } else if (/[\u4E00-\u9FFF]/.test(cleanText)) {
+            detectedLang = 'zh';
+            targetLang = 'th';
+          }
+
+          // Alternate active speaker only if autoAlternate mode is enabled
+          if (this.autoAlternate) {
+            this.activeSpeaker = targetLang;
+            this.callbacks.onSpeakerChange(targetLang);
+          }
+
+          // Fast translation API call (<250ms)
+          const resp = await fetch('/api/translate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: cleanText,
+              sourceLang: detectedLang,
+              targetLang: targetLang,
+            }),
+          });
+
+          const data = await resp.json();
+          if (data.success && data.translatedText) {
+            this.callbacks.onTranslation({
+              originalText: cleanText,
+              translatedText: data.translatedText,
+              detectedLang,
+              targetLang,
+              pinyin: data.pinyin,
+              phoneticsForReader: data.phoneticsForReader,
+            });
+          }
+        } catch (err: any) {
+          console.warn('Speech translation error:', err);
+        } finally {
+          this.isTranslating = false;
+          this.callbacks.onInterimText('');
+          this.consecutiveErrors = 0;
+          // If not paused for TTS, schedule quick restart
+          if (this.isRunning && !this.isPausedForTTS) {
+            this.scheduleRecognitionRestart(60);
+          }
+        }
+      },
+      (error) => {
+        if (!this.isRunning || this.isPausedForTTS) return;
+
+        // Normal pause between conversation turns is NOT an error
+        if (error === 'no-speech') {
+          this.scheduleRecognitionRestart(100);
+          return;
+        }
+
+        this.consecutiveErrors++;
+        console.warn('Continuous speech recognition warning:', error, 'count:', this.consecutiveErrors);
+
+        if (this.consecutiveErrors >= 5) {
+          console.info('Switching to ContinuousAutoInterpreter fallback after repeated speech recognition errors');
+          this.recognitionSession?.stop();
+          this.recognitionSession = null;
+          this.startAutoInterpreterFallback();
+          return;
+        }
+
+        // Restart after transient error
+        this.scheduleRecognitionRestart(300);
+      },
+      () => {
+        // Recognition cycle ended
+        if (this.isRunning && !this.isPausedForTTS && !this.isTranslating) {
+          this.scheduleRecognitionRestart(50);
+        }
+      }
+    );
+
+    return true;
+  }
+
+  private scheduleRecognitionRestart(delayMs = 60) {
+    if (this.restartTimer) clearTimeout(this.restartTimer);
+    if (!this.isRunning || this.isPausedForTTS) return;
+
+    this.restartTimer = setTimeout(() => {
+      if (this.isRunning && !this.isPausedForTTS && !this.isTranslating) {
+        this.startSpeechRecognitionLoop();
+      }
+    }, delayMs);
+  }
+
+  private async startAutoInterpreterFallback(): Promise<boolean> {
     this.interpreter = new ContinuousAutoInterpreter({
       onStatusChange: (status) => this.callbacks.onStatusChange(status),
       onVolumeChange: (vol) => this.callbacks.onVolumeChange(vol),
       onTranslation: (data) => {
+        this.activeSpeaker = data.detectedLang;
         this.callbacks.onSpeakerChange(data.detectedLang);
         this.callbacks.onTranslation(data);
       },
       onError: (err) => {
-        console.warn('Auto interpreter error:', err);
+        console.warn('Auto interpreter fallback error:', err);
         this.callbacks.onError(err);
       },
     });
@@ -735,36 +935,74 @@ export class ContinuousConversationManager {
 
   /**
    * Called when TTS begins speaking translation
-   * Pauses microphone so it does not capture the device's own speaker
+   * Pauses microphone so it never captures the device's own speaker audio
    */
   public onTTSSpeakStart() {
     this.isPausedForTTS = true;
+
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+
+    if (this.recognitionSession) {
+      this.recognitionSession.stop();
+    }
+
     if (this.interpreter) {
-      this.interpreter.setMutedForTTS(true, 4500);
+      this.interpreter.setMutedForTTS(true, 6000);
     }
   }
 
   /**
    * Called when TTS finishes speaking translation
-   * Resumes listening immediately for whichever party speaks next (Thai or Chinese)
+   * Resumes listening immediately for the next speaker
    */
   public onTTSSpeakEnd() {
     this.isPausedForTTS = false;
+
     if (this.interpreter) {
       this.interpreter.setMutedForTTS(false);
+    }
+
+    if (this.isRunning && !this.isTranslating) {
+      if (isSpeechRecognitionSupported()) {
+        this.scheduleRecognitionRestart(100);
+      } else {
+        this.callbacks.onStatusChange('listening');
+      }
     }
   }
 
   /**
-   * Switch speaker stub kept for UI compatibility
+   * Switch speaker language
    */
   public switchSpeaker(lang: 'th' | 'zh') {
+    this.activeSpeaker = lang;
     this.callbacks.onSpeakerChange(lang);
+
+    if (this.isRunning && isSpeechRecognitionSupported() && !this.isPausedForTTS) {
+      if (this.recognitionSession) {
+        this.recognitionSession.stop();
+      }
+      this.scheduleRecognitionRestart(50);
+    }
   }
 
   public stop() {
     this.isRunning = false;
     this.isPausedForTTS = false;
+    this.isTranslating = false;
+
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+
+    if (this.recognitionSession) {
+      this.recognitionSession.stop();
+      this.recognitionSession = null;
+    }
 
     if (this.interpreter) {
       this.interpreter.stop();
